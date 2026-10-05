@@ -73,3 +73,22 @@ def ustar_header(name: str, size: int, typeflag: bytes) -> bytes:
     header[263:265] = b"00"
     header[148:156] = b"%06o\0 " % sum(header)
     return bytes(header)
+
+
+def pad_block(data: bytes) -> bytes:
+    """Pad data with zeros to a multiple of 512 bytes."""
+    return data + bytes(-len(data) % 512)
+
+
+def pax_record(keyword: str, value: str) -> bytes:
+    """One pax record "<len> <keyword>=<value>\n" with a self-consistent length."""
+    body = f" {keyword}={value}\n".encode()
+    length = len(body) + 1
+    while len(str(length)) + len(body) != length:
+        length += 1
+    return str(length).encode() + body
+
+
+def ustar_member(name: str, data: bytes, typeflag: bytes = b"0") -> bytes:
+    """A hand-crafted header plus its padded data blocks."""
+    return ustar_header(name, len(data), typeflag) + pad_block(data)

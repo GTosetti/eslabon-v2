@@ -20,6 +20,7 @@ from eslabon.model import Anomaly, Limits, LimitsExceeded, Member, ParseError
 from eslabon.sanitize import to_hex
 
 _CHUNK = 64 * 2**10
+MAX_META = 1 * 2**20  # per pax/GNU-long header and per chain; global pax cumulative
 _PATH_HEX_MAX = 1024
 _GZ_MAGIC = b"\x1f\x8b"
 _BZ2_MAGIC = b"BZh"
@@ -111,7 +112,7 @@ class _CountingReader:
             if self._kind == "gz":
                 if not self._in:
                     self._in = self._raw_read()
-                out = d.decompress(self._in, n)
+                out = self._codec(d.decompress, self._in, n)
                 self._in = d.unconsumed_tail
                 if not out and not self._in and not d.eof and not self._raw_peekable():
                     raise ParseError("truncated gzip stream")
@@ -124,9 +125,16 @@ class _CountingReader:
                     data, self._in = self._in, b""
                 else:
                     data = b""
-                out = d.decompress(data, n)
+                out = self._codec(d.decompress, data, n)
             if out:
                 return out
+
+    @staticmethod
+    def _codec(fn, data: bytes, n: int) -> bytes:
+        try:
+            return fn(data, n)
+        except (zlib.error, OSError, EOFError) as exc:
+            raise ParseError("corrupt compressed stream") from exc
 
     def _next_member(self) -> bool:
         """At end of a compressed member: start the next one, or validate padding."""
@@ -202,6 +210,8 @@ def iter_members(
             reader.drain()
         except (LimitsExceeded, ParseError):
             raise
+        except (MemoryError, RecursionError) as exc:
+            raise LimitsExceeded(f"resource exhausted: {type(exc).__name__}") from exc
         except Exception as exc:  # malformed input must never escape raw
             raise ParseError(f"malformed tar: {type(exc).__name__}") from exc
         finally:
@@ -226,23 +236,74 @@ _META_TYPES = (
     tarfile.GNUTYPE_LONGNAME,
     tarfile.GNUTYPE_LONGLINK,
 )
+MAX_META_CHAIN = 16  # metadata headers allowed in front of one real member
+
+# The hooks below rely on tarfile internals of CPython 3.13; fail loudly if an
+# upgrade removes them instead of silently losing the metadata caps.
+if not callable(getattr(tarfile.TarInfo, "_proc_member", None)):
+    raise RuntimeError("tarfile.TarInfo._proc_member missing: review archive.py")
 
 
-def _capped_tarinfo(cap: int) -> type[tarfile.TarInfo]:
-    """TarInfo that refuses pax/GNU-long metadata headers larger than cap.
+@dataclass
+class _TarState:
+    meta_chain_bytes: int = 0
+    meta_chain_count: int = 0
+    global_meta_bytes: int = 0
+    bad_header: bool = False
 
-    tarfile buffers such a header's whole body in memory before parsing it, so
-    without this the only bound is max_total. Hooks the private _proc_member
-    (stable in 3.13); the counting reader remains the backstop either way.
+
+def _guarded_tarinfo(state: _TarState) -> type[tarfile.TarInfo]:
+    """TarInfo subclass that caps metadata headers and records bad headers.
+
+    tarfile buffers each pax/GNU-long body in memory and recurses once per
+    chained header, so they are capped per header, per chain (reset when a real
+    member is returned) and, for global 'g' headers, across the whole archive.
+    A header that fails to parse after the first member is remembered: tarfile
+    would silently treat it as end-of-archive, other tar readers would not.
     """
 
-    class _CappedTarInfo(tarfile.TarInfo):
+    class _GuardedTarInfo(tarfile.TarInfo):
+        @classmethod
+        def fromtarfile(cls, tarfile_obj):
+            try:
+                info = super().fromtarfile(tarfile_obj)
+            except (tarfile.InvalidHeaderError, tarfile.TruncatedHeaderError):
+                if tarfile_obj.offset > 0:
+                    state.bad_header = True
+                raise
+            state.meta_chain_bytes = 0
+            state.meta_chain_count = 0
+            return info
+
         def _proc_member(self, tarfile_obj):
-            if self.type in _META_TYPES and self.size > cap:
-                raise LimitsExceeded(f"metadata header larger than {cap}")
+            if self.type in _META_TYPES:
+                if self.size > MAX_META:
+                    raise LimitsExceeded(f"metadata header larger than {MAX_META}")
+                state.meta_chain_count += 1
+                if state.meta_chain_count > MAX_META_CHAIN:
+                    raise LimitsExceeded("too many chained metadata headers")
+                if self.type == tarfile.XGLTYPE:
+                    state.global_meta_bytes += self.size
+                    if state.global_meta_bytes > MAX_META:
+                        raise LimitsExceeded("global pax headers exceed cap")
+                else:
+                    state.meta_chain_bytes += self.size
+                    if state.meta_chain_bytes > MAX_META:
+                        raise LimitsExceeded("chained metadata headers exceed cap")
             return super()._proc_member(tarfile_obj)
 
-    return _CappedTarInfo
+    return _GuardedTarInfo
+
+
+def _check_end_of_archive(tar: tarfile.TarFile, state: _TarState) -> None:
+    """Fail closed on anything tarfile would silently ignore after its last member."""
+    if state.bad_header:
+        raise ParseError("invalid tar header mid-archive")
+    # tar.fileobj is tarfile's _Stream: it returns its own buffered bytes first,
+    # then pulls (counted, capped) chunks from the _CountingReader.
+    while chunk := tar.fileobj.read(_CHUNK):
+        if chunk.count(0) != len(chunk):
+            raise ParseError("non-zero data after end-of-archive")
 
 
 def _iter_tar(
@@ -253,9 +314,8 @@ def _iter_tar(
     stats: TarStats,
 ) -> Iterator[Member]:
     seen: dict[str, int] = {}
-    tar = tarfile.open(
-        fileobj=reader, mode="r|", tarinfo=_capped_tarinfo(limits.max_file)
-    )
+    state = _TarState()
+    tar = tarfile.open(fileobj=reader, mode="r|", tarinfo=_guarded_tarinfo(state))
     try:
         for index, m in enumerate(tar):
             if index + 1 > limits.max_members:
@@ -285,5 +345,6 @@ def _iter_tar(
                 raise LimitsExceeded(f"member larger than {limits.max_file}")
             stats.files_scanned += 1
             yield Member(index=index, path=norm, data=data)
+        _check_end_of_archive(tar, state)
     finally:
         tar.close()

@@ -5,12 +5,21 @@ from __future__ import annotations
 import bz2
 import gzip
 import os
+import tarfile
 import zlib
 
 import pytest
-from builders import TarItem, make_tar, ustar_header
+from builders import (
+    TarItem,
+    make_tar,
+    pad_block,
+    pax_record,
+    ustar_header,
+    ustar_member,
+)
 
-from eslabon.archive import TarStats, iter_members, normalize_path
+import eslabon.archive as archive_mod
+from eslabon.archive import MAX_META, TarStats, iter_members, normalize_path
 from eslabon.model import Limits, LimitsExceeded, ParseError
 
 ARCHIVE = "pkg.tgz"
@@ -276,19 +285,142 @@ def test_empty_archive_yields_nothing(workdir):
     assert stats.files_scanned == 0
 
 
+def _bad_checksum_header(name: str = "a") -> bytes:
+    header = bytearray(ustar_header(name, 0, b"0"))
+    header[0] ^= 0x01  # flip a name byte after the checksum was computed
+    return bytes(header)
+
+
 @pytest.mark.parametrize(
-    "data",
+    ("data", "cause"),
     [
-        b"",
-        b"not a tar at all" * 100,
-        b"\x1f\x8b" + b"\xff" * 50,
-        b"BZh9" + b"\x00" * 50,
-        ustar_header("a", 10, b"0")[:-1] + b"\x01" + bytes(512),  # bad checksum
+        (b"", tarfile.ReadError),
+        (b"not a tar at all" * 100, tarfile.ReadError),
+        (b"\x1f\x8b" + b"\xff" * 50, zlib.error),
+        (b"BZh9" + b"\x00" * 50, OSError),
+        (_bad_checksum_header() + bytes(512), tarfile.ReadError),
     ],
+    ids=["empty", "text", "bad-gzip", "bad-bz2", "bad-checksum"],
 )
-def test_malformed_input_is_parse_error(workdir, data):
+def test_malformed_input_is_parse_error(workdir, data, cause):
     path = _write(workdir, data)
+    with pytest.raises(ParseError) as info:
+        _run(path)
+    assert isinstance(info.value.__cause__, cause)
+
+
+def _compress(raw: bytes, compression: str) -> bytes:
+    if compression == "gz":
+        return gzip.compress(raw)
+    if compression == "bz2":
+        return bz2.compress(raw)
+    return raw
+
+
+GOOD = ustar_member("package/index.js", b"ok()")
+EVIL = ustar_member("package/evil.js", b"evil()")
+END = bytes(1024)
+
+
+@pytest.mark.parametrize("compression", ["", "gz", "bz2"])
+def test_single_zero_block_mid_archive_is_parse_error(workdir, compression):
+    raw = GOOD + bytes(512) + EVIL + END
+    path = _write(workdir, _compress(raw, compression))
+    with pytest.raises(ParseError, match="after end-of-archive"):
+        _run(path, "npm")
+
+
+@pytest.mark.parametrize("compression", ["", "gz", "bz2"])
+def test_bad_checksum_mid_archive_is_parse_error(workdir, compression):
+    raw = GOOD + _bad_checksum_header("package/x.js") + EVIL + END
+    path = _write(workdir, _compress(raw, compression))
     with pytest.raises(ParseError):
+        _run(path, "npm")
+
+
+@pytest.mark.parametrize("compression", ["", "gz"])
+def test_bad_header_followed_only_by_zeros_is_parse_error(workdir, compression):
+    raw = GOOD + _bad_checksum_header("package/x.js") + END
+    path = _write(workdir, _compress(raw, compression))
+    with pytest.raises(ParseError, match="invalid tar header mid-archive"):
+        _run(path, "npm")
+
+
+@pytest.mark.parametrize("compression", ["", "gz", "bz2"])
+def test_nonzero_after_end_of_archive_is_parse_error(workdir, compression):
+    raw = GOOD + END + EVIL
+    path = _write(workdir, _compress(raw, compression))
+    with pytest.raises(ParseError, match="after end-of-archive"):
+        _run(path, "npm")
+
+
+@pytest.mark.parametrize("compression", ["", "gz", "bz2"])
+def test_proper_end_of_archive_with_padding_ok(workdir, compression):
+    raw = GOOD + END + bytes(8192)
+    path = _write(workdir, _compress(raw, compression))
+    stats = TarStats()
+    members, anomalies = _run(path, "npm", stats=stats)
+    assert [m.path for m in members] == ["index.js"]
+    assert anomalies == []
+    assert stats.bytes_read == len(raw)
+
+
+def _pax(typeflag: bytes, size: int) -> bytes:
+    """A valid pax header (one 'comment' record) whose body is exactly size bytes."""
+    rec = pax_record("comment", "a" * (size - 20))
+    rec = pax_record("comment", "a" * (size - 20 + size - len(rec)))
+    assert len(rec) == size
+    return ustar_header("PaxHeader/x", size, typeflag) + pad_block(rec)
+
+
+def test_pax_header_over_meta_cap_with_default_limits(workdir):
+    raw = _pax(b"x", MAX_META + 1024) + GOOD + END
+    path = _write(workdir, raw)
+    stats = TarStats()
+    with pytest.raises(LimitsExceeded):
+        _run(path, stats=stats)
+    assert stats.bytes_read <= CHUNK
+
+
+def test_chained_pax_headers_aggregate_cap(workdir):
+    each = MAX_META * 6 // 10
+    raw = _pax(b"x", each) + _pax(b"x", each) + GOOD + END
+    path = _write(workdir, raw)
+    with pytest.raises(LimitsExceeded):
+        _run(path)
+
+
+def test_global_pax_headers_cumulative_cap(workdir):
+    each = MAX_META * 6 // 10
+    raw = _pax(b"g", each) + GOOD + _pax(b"g", each) + EVIL + END
+    path = _write(workdir, raw)
+    with pytest.raises(LimitsExceeded):
+        _run(path)
+
+
+def test_separate_pax_headers_under_cap_ok(workdir):
+    each = MAX_META * 6 // 10
+    raw = _pax(b"x", each) + GOOD + _pax(b"x", each) + EVIL + END
+    path = _write(workdir, raw)
+    members, _ = _run(path, "npm")
+    assert [m.path for m in members] == ["index.js", "evil.js"]
+
+
+def test_long_chain_of_tiny_pax_headers_capped(workdir):
+    raw = b"".join(_pax(b"x", 64) for _ in range(200)) + GOOD + END
+    path = _write(workdir, raw)
+    with pytest.raises(LimitsExceeded):
+        _run(path)
+
+
+@pytest.mark.parametrize("exc", [MemoryError, RecursionError])
+def test_resource_errors_map_to_limits_exceeded(workdir, monkeypatch, exc):
+    def boom(raw, ecosystem):
+        raise exc("boom")
+
+    monkeypatch.setattr(archive_mod, "normalize_path", boom)
+    path = _write(workdir, make_tar([TarItem("a.py", b"a")]))
+    with pytest.raises(LimitsExceeded):
         _run(path)
 
 
