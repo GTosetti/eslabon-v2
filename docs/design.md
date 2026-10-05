@@ -205,6 +205,11 @@ enforces it. Every emitted line is validated in tests. A change of meaning bumps
 - `package.type` and `package.checksum` are **not** used. In ECS they mean the package file
   type and the hash of the installed package. The ecosystem goes in `eslabon.ecosystem` and
   the artifact hash in `file.hash.sha256`/`sha512`.
+- Every emitted path is capped at 512 characters and every hex field at 1,024 characters.
+  A pax header can make a member name megabytes long.
+- For a local archive, `package.name` and `package.version` are read from inside it (sdist
+  `PKG-INFO`, wheel `METADATA`, npm `package.json`). They are attacker-controlled. If they
+  are absent, the anomaly `no_metadata` is recorded and ESL-005 and ESL-006 are skipped.
 - Arrays hold strings only. The Wazuh JSON decoder keeps string arrays but does not support
   arrays of objects.
 
@@ -223,7 +228,10 @@ checked. `--offline` skips OSV explicitly and records `osv_status=skipped`.
 ## 7. Integrations
 
 **Wazuh** (`integrations/wazuh/`):
-- `local_rules.xml`, IDs **100300–100399**, group **`eslabon_v2`**. No custom decoder: the
+- `local_rules.xml`, installed on the manager as its own file,
+  `/var/ossec/etc/rules/eslabon_v2_rules.xml`, so v1's rules are never edited. IDs
+  **100300–100399**, group **`eslabon_v2`**. Wazuh produces **one alert per event**, so the
+  rule tree is built so that each event reaches exactly one leaf rule. No custom decoder: the
   built-in `json` decoder handles lines that start with `{"`.
   - **Coexistence with eslabon v1.** The lab manager already runs the earlier eslabon, an
     orchestrator of external scanners, with rule IDs 100100–100170, group `eslabon`, and a
@@ -237,7 +245,8 @@ checked. `--offline` skips OSV explicitly and records `osv_status=skipped`.
   - `100310` is the scan summary with status `ok`, at level 3, the lowest level that is
     indexed, so it can be counted.
   - `100311` is the scan summary with any other status, at level 7.
-  - `100320` is the hand translation of the Sigma rule.
+  - `100306` is also the hand translation of the Sigma rule (see below). No separate Sigma
+    rule exists, because it would compete with `100301`–`100306` for the same events.
 - `agent-ossec.conf.snippet`: a `<localfile>` for `/var/log/eslabon/events.jsonl` with
   `log_format json`. Kali's agent configuration is trimmed to this block so that Kali's own
   noise does not pollute the measurement.
@@ -249,12 +258,15 @@ checked. `--offline` skips OSV explicitly and records `osv_status=skipped`.
 `wazuh-logtest` for "not found" warnings. If a sub-technique is missing from Wazuh's
 database, its parent is used in the XML and the README says so.
 
-**Sigma** (`integrations/sigma/`): one rule, *"Eslabon finding with severity ≥ 7"*
-(`event.severity|gte: 7`), with its own `logsource` (`product: eslabon`). Wazuh has no
-numeric comparison, so the translation matches the string with the regex `^([7-9]|10)$`, and
-the mapping table records that. No official pySigma backend for Wazuh exists
-(<https://github.com/wazuh/wazuh/issues/17568>), so the rule is **translated by hand** to
-rule `100320`. A field mapping table sits next to it. What is validated end to end is that
+**Sigma** (`integrations/sigma/`): one rule, *"Known-malicious package (Eslabon ESL-006)"*.
+It has its own `logsource` (`product: eslabon`) and matches `event.module: eslabon`,
+`event.dataset: eslabon.finding` and `rule.id: ESL-006`.
+- It was originally *"severity ≥ 7"*. It changed because Wazuh produces one alert per event,
+  so a separate severity rule would have competed with the per-heuristic rules for the same
+  events. Either the severity alert or the per-rule ATT&CK alert would never have been seen.
+- No official pySigma backend for Wazuh exists
+  (<https://github.com/wazuh/wazuh/issues/17568>), so the rule is **translated by hand**, and
+  its translation is rule `100306`. A field mapping table sits next to it. What is validated end to end is that
 translation firing in `wazuh-alerts-*`, and the README says exactly that.
 
 ## 8. Security model
