@@ -8,9 +8,16 @@ _ANSI = re.compile(
     r"|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)?"
     r"|\x1b"
 )
-# C0 (except \t), DEL, C1, bidi embeddings/isolates, LRM/RLM/ALM.
+# Ranges to drop: C0 (except TAB), DEL, C1, soft hyphen, ALM, zero-width, LRM/RLM,
+# line/paragraph separators, bidi embeddings/isolates, word joiner, BOM, tag block.
+# Built from integers so the source stays pure ASCII.
+_STRIP_RANGES = (
+    (0x00, 0x08), (0x0A, 0x1F), (0x7F, 0x9F), (0xAD, 0xAD), (0x61C, 0x61C),
+    (0x200B, 0x200F), (0x2028, 0x202E), (0x2060, 0x2060), (0x2066, 0x2069),
+    (0xFEFF, 0xFEFF), (0xE0000, 0xE007F),
+)
 _CONTROLS = re.compile(
-    r"[\x00-\x08\x0a-\x1f\x7f-\x9f‪-‮⁦-⁩‎‏؜]"
+    "[" + "".join(f"{chr(lo)}-{chr(hi)}" for lo, hi in _STRIP_RANGES) + "]"
 )
 
 

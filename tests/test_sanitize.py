@@ -22,3 +22,27 @@ def test_invalid_utf8_replaced():
 def test_to_hex_roundtrip():
     assert bytes.fromhex(to_hex("../x")).decode() == "../x"
     assert to_hex("A") == "41"
+
+
+def test_strips_line_separators():
+    assert clean_text("a b c") == "abc"
+
+
+def test_sanitize_source_is_ascii():
+    from pathlib import Path
+
+    import eslabon.sanitize as mod
+
+    data = Path(mod.__file__).read_bytes()
+    assert all(b < 0x80 for b in data)
+
+
+def test_strips_zero_width_and_tag_chars():
+    assert clean_text("a\U000e0041b​c﻿d") == "abcd"
+    assert clean_text("a‌‍⁠­b\U000e007f") == "ab"
+
+
+def test_no_esc_survives():
+    assert "\x1b" not in clean_text("\x1b\x00[31mX")
+    assert "\x1b" not in clean_text("\x1b[" * 200_000, max_len=10**7)
+
