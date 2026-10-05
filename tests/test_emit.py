@@ -19,7 +19,7 @@ PKG = PackageRef("reqeusts", "1.0.0", "pypi", "ab" * 32)
 RULE = load_catalog()["ESL-003"]
 STATUSES = [
     "ok", "timeout", "limits_exceeded", "parse_error",
-    "hash_mismatch", "fetch_error", "osv_unavailable",
+    "hash_mismatch", "fetch_error", "incomplete", "osv_unavailable",
 ]
 
 

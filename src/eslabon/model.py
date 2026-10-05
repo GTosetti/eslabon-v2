@@ -58,14 +58,15 @@ class PackageRef:
 
 @dataclass(frozen=True)
 class ScanContext:
-    rules: yara.Rules
+    rules: yara.Rules | None  # None until the rule set exists (Task 9)
     limits: Limits
     pkg: PackageRef
 
 
 @dataclass
 class ScanResult:
-    # ok|timeout|limits_exceeded|parse_error|hash_mismatch|fetch_error|osv_unavailable
+    # ok|timeout|limits_exceeded|parse_error|hash_mismatch|fetch_error|incomplete|
+    # osv_unavailable (precedence: scan.STATUS_PRECEDENCE)
     status: str
     findings: list[Finding]
     anomalies: list[Anomaly]

@@ -39,7 +39,7 @@ no BOM, and always under 65,536 bytes.
 | `threat.framework` | string | Findings only: `MITRE ATT&CK` | no |
 | `threat.technique.id` / `.name` | string[] | Findings only: technique IDs and names | no |
 | `threat.tactic.id` / `.name` | string[] | Findings only: tactic IDs and names | no |
-| `package.name` | string | Name from metadata or the request; `unknown` if absent. Max 512 chars | yes |
+| `package.name` | string | Name from metadata or the request; `unknown` if absent. Max 512 chars. For a local archive it is read from inside it (see below) | yes |
 | `package.version` | string | Version, same origin. Max 512 chars | yes |
 | `file.hash.sha256` | string | SHA-256 of the **archive** (omitted if unknown) | no |
 | `eslabon.schema_version` | string | `1.0` | no |
@@ -52,13 +52,34 @@ no BOM, and always under 65,536 bytes.
 | `eslabon.evidence.name_hex` | string | Findings only: hex of the raw member name, max 1,024 chars | yes |
 | `eslabon.evidence.match_count` | integer | Findings only: matches in that file | no |
 | `eslabon.mitigation.action` / `.residual_gap` / `.detect` | string | Findings only: catalog text | no |
-| `eslabon.scan.status` | string | `ok`, `timeout`, `limits_exceeded`, `parse_error`, `hash_mismatch`, `fetch_error`, `osv_unavailable` | no |
-| `eslabon.scan.files_scanned` / `bytes_read` | integer | Work done | no |
+| `eslabon.scan.status` | string | `ok`, `timeout`, `limits_exceeded`, `parse_error`, `hash_mismatch`, `fetch_error`, `incomplete`, `osv_unavailable` (see below) | no |
+| `eslabon.scan.files_scanned` / `bytes_read` | integer | Work done. `bytes_read` differs by format: for a zip/wheel it is the decompressed bytes of the members read; for a tar it is the whole decompressed stream (headers, padding and skipped members included) | no |
 | `eslabon.scan.findings` / `anomalies` | integer | Counts | no |
 | `eslabon.scan.anomaly_kinds` | string[] | Sorted unique anomaly kinds | no |
 | `eslabon.scan.osv_status` | string | `ok`, `unavailable`, `skipped` | no |
 | `eslabon.scan.duration_ms` | integer | Wall-clock duration | no |
 | `eslabon.scan.error` | string | Only when an error exists. Max 512 chars | yes |
+
+## Scan status
+
+When several statuses apply, the first one in this list wins:
+`timeout` > `limits_exceeded` > `parse_error` > `hash_mismatch` > `fetch_error` >
+`incomplete` > `osv_unavailable` > `ok`.
+
+`incomplete` means the archive was read to the end but some content was not scanned: an
+anomaly of kind `encrypted_member`, `unsupported_compression` or `bad_member` was recorded.
+
+Exit code of `eslabon scan`: 2 for every status other than `ok` (and for any usage or IO
+error), 1 if the status is `ok` and there are findings, 0 otherwise.
+
+## Package metadata of a local archive
+
+Name and version are read during the same streaming pass that scans the members:
+sdist `<top dir>/PKG-INFO` and wheel `<name>.dist-info/METADATA` (RFC 822 `Name:` /
+`Version:` headers), npm top-level `package.json` (`name` / `version`). If a metadata file
+appears more than once, the last copy wins. The values are attacker-controlled. If none is
+found or it is malformed, the summary lists the anomaly kind `no_metadata`, and
+`package.name` is `unknown`.
 
 ## Versioning
 

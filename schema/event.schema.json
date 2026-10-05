@@ -108,7 +108,7 @@
           "properties": {
             "status": {
               "enum": ["ok", "timeout", "limits_exceeded", "parse_error",
-                       "hash_mismatch", "fetch_error", "osv_unavailable"]
+                       "hash_mismatch", "fetch_error", "incomplete", "osv_unavailable"]
             },
             "files_scanned": {"type": "integer", "minimum": 0},
             "bytes_read": {"type": "integer", "minimum": 0},
