@@ -1,0 +1,144 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eslabon.invalid/schema/event.schema.json",
+  "title": "Eslabon v2 event (finding or scan summary)",
+  "type": "object",
+  "required": ["@timestamp", "ecs", "event", "package", "eslabon"],
+  "properties": {
+    "@timestamp": {
+      "type": "string",
+      "pattern": "^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}\\.\\d{3}Z$"
+    },
+    "ecs": {
+      "type": "object",
+      "required": ["version"],
+      "properties": {"version": {"type": "string"}}
+    },
+    "event": {
+      "type": "object",
+      "required": ["kind", "module", "dataset"],
+      "properties": {
+        "kind": {"enum": ["alert", "event"]},
+        "module": {"const": "eslabon"},
+        "dataset": {"enum": ["eslabon.finding", "eslabon.scan"]},
+        "category": {"type": "array", "items": {"type": "string"}},
+        "type": {"type": "array", "items": {"type": "string"}},
+        "severity": {"type": "integer", "minimum": 1, "maximum": 10},
+        "outcome": {"enum": ["success", "failure"]}
+      }
+    },
+    "rule": {
+      "type": "object",
+      "required": ["id"],
+      "properties": {
+        "id": {"type": "string", "pattern": "^ESL-00[1-6]$"},
+        "name": {"type": "string"},
+        "ruleset": {"type": "string"},
+        "version": {"type": "string"}
+      }
+    },
+    "threat": {
+      "type": "object",
+      "required": ["technique"],
+      "properties": {
+        "framework": {"type": "string"},
+        "technique": {
+          "type": "object",
+          "required": ["id"],
+          "properties": {
+            "id": {"type": "array", "items": {"type": "string"}, "minItems": 1},
+            "name": {"type": "array", "items": {"type": "string"}}
+          }
+        },
+        "tactic": {
+          "type": "object",
+          "properties": {
+            "id": {"type": "array", "items": {"type": "string"}},
+            "name": {"type": "array", "items": {"type": "string"}}
+          }
+        }
+      }
+    },
+    "package": {
+      "type": "object",
+      "required": ["name"],
+      "properties": {"name": {"type": "string"}, "version": {"type": "string"}}
+    },
+    "file": {
+      "type": "object",
+      "properties": {
+        "hash": {
+          "type": "object",
+          "properties": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+        }
+      }
+    },
+    "eslabon": {
+      "type": "object",
+      "required": ["schema_version", "ecosystem"],
+      "properties": {
+        "schema_version": {"type": "string"},
+        "attack_version": {"type": "string"},
+        "ecosystem": {"enum": ["pypi", "npm"]},
+        "scan_id": {"type": "string"},
+        "evidence": {
+          "type": "object",
+          "required": ["file", "line", "snippet", "name_hex", "match_count"],
+          "properties": {
+            "file": {"type": "string", "maxLength": 512},
+            "line": {"type": "integer"},
+            "snippet": {"type": "string", "maxLength": 1024},
+            "name_hex": {"type": "string", "maxLength": 1024},
+            "match_count": {"type": "integer", "minimum": 0}
+          }
+        },
+        "mitigation": {
+          "type": "object",
+          "properties": {
+            "action": {"type": "string"},
+            "residual_gap": {"type": "string"},
+            "detect": {"type": "string"}
+          }
+        },
+        "scan": {
+          "type": "object",
+          "required": ["status"],
+          "properties": {
+            "status": {
+              "enum": ["ok", "timeout", "limits_exceeded", "parse_error",
+                       "hash_mismatch", "fetch_error", "osv_unavailable"]
+            },
+            "files_scanned": {"type": "integer", "minimum": 0},
+            "bytes_read": {"type": "integer", "minimum": 0},
+            "findings": {"type": "integer", "minimum": 0},
+            "anomalies": {"type": "integer", "minimum": 0},
+            "anomaly_kinds": {"type": "array", "items": {"type": "string"}},
+            "osv_status": {"enum": ["ok", "unavailable", "skipped"]},
+            "duration_ms": {"type": "integer", "minimum": 0},
+            "error": {"type": "string"}
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {"event": {"properties": {"dataset": {"const": "eslabon.finding"}}}}
+      },
+      "then": {
+        "required": ["rule", "threat"],
+        "properties": {
+          "event": {"required": ["severity"]},
+          "eslabon": {"required": ["evidence"]}
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {"event": {"properties": {"dataset": {"const": "eslabon.scan"}}}}
+      },
+      "then": {"properties": {"eslabon": {"required": ["scan"]}}}
+    }
+  ]
+}
