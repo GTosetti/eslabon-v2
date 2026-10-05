@@ -1,0 +1,67 @@
+# --- Secrets: never committed -------------------------------------------
+# Exact names, not broad globs: a pattern like *token* would also hide
+# legitimate source files such as tokenizer.py.
+.env
+.env.*
+.npmrc
+.pypirc
+*.pem
+*.key
+*.pfx
+*.p12
+id_rsa*
+id_ed25519*
+*.token
+/Tocken API HackerOne.txt
+inventario.md
+
+# --- Local-only notes (Spanish working notes, not part of the public repo)
+PROMPT-INICIAL.md
+
+# --- Claude Code: personal overrides stay local ---------------------------
+.claude/settings.local.json
+
+# --- Hostile material: package archives are never committed ---------------
+# Real or downloaded packages are analysed in the lab, not stored in git.
+# Synthetic test fixtures are built by the test suite at runtime.
+*.tgz
+*.tar
+*.tar.*
+*.gz
+*.bz2
+*.xz
+*.whl
+*.zip
+*.7z
+*.egg
+/samples/
+/quarantine/
+/downloads/
+/corpus-cache/
+
+# --- Scan output -----------------------------------------------------------
+# Real scan output is ignored; committed examples live under these paths.
+*.jsonl
+!tests/**/*.jsonl
+!docs/**/*.jsonl
+!integrations/**/*.jsonl
+
+# --- Python ----------------------------------------------------------------
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+build/
+dist/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# --- OS / editors ----------------------------------------------------------
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/
