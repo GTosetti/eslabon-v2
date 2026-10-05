@@ -1,0 +1,110 @@
+# ATT&CK v19.2 (verified 2026-10-05). Rule tactics are derived from technique order.
+
+[tactics]
+TA0001 = "Initial Access"
+TA0002 = "Execution"
+TA0003 = "Persistence"
+TA0004 = "Privilege Escalation"
+TA0005 = "Stealth"
+TA0006 = "Credential Access"
+TA0010 = "Exfiltration"
+
+[techniques.T1546_016]
+id = "T1546.016"
+name = "Installer Packages"
+tactics = ["TA0003", "TA0004"]
+
+[techniques.T1059_006]
+id = "T1059.006"
+name = "Python"
+tactics = ["TA0002"]
+
+[techniques.T1059_007]
+id = "T1059.007"
+name = "JavaScript"
+tactics = ["TA0002"]
+
+[techniques.T1027_013]
+id = "T1027.013"
+name = "Encrypted/Encoded File"
+tactics = ["TA0005"]
+
+[techniques.T1140]
+id = "T1140"
+name = "Deobfuscate/Decode Files or Information"
+tactics = ["TA0005"]
+
+[techniques.T1552_001]
+id = "T1552.001"
+name = "Credentials In Files"
+tactics = ["TA0006"]
+
+[techniques.T1041]
+id = "T1041"
+name = "Exfiltration Over C2 Channel"
+tactics = ["TA0010"]
+
+[techniques.T1195_001]
+id = "T1195.001"
+name = "Compromise Software Dependencies and Development Tools"
+tactics = ["TA0001"]
+
+[[rules]]
+id = "ESL-001"
+name = "pypi-install-exec"
+severity = 8
+wazuh_level = 11
+techniques = ["T1546.016", "T1059.006"]
+action = "Install with --no-build-isolation reviewed sdists only; prefer wheels (no setup.py runs) and block egress from build hosts."
+residual_gap = "Does not flag setup.py that fetches or runs code via indirect means (e.g. a helper module); only direct network or download-tool use is seen."
+detect = "Process and network telemetry from pip/python during install (child curl, wget, powershell, outbound connections)."
+
+[[rules]]
+id = "ESL-002"
+name = "npm-install-script-exec"
+severity = 8
+wazuh_level = 11
+techniques = ["T1546.016", "T1059.007"]
+action = "Install with --ignore-scripts by default and allow-list the few packages that need lifecycle scripts."
+residual_gap = "Does not judge the JS file an install script runs (postinstall: node index.js), the commonest shape of npm malware; ESL-003/004 cover that file."
+detect = "Child processes of node/npm during install (sh, curl, powershell) and their outbound connections."
+
+[[rules]]
+id = "ESL-003"
+name = "encoded-exec"
+severity = 9
+wazuh_level = 12
+techniques = ["T1027.013", "T1140"]
+action = "Review or reject packages that decode and execute embedded payloads; sandbox first-run of unreviewed dependencies."
+residual_gap = "Misses multi-stage decoding split across lines, so decoder and evaluator are not adjacent."
+detect = "Interpreter processes spawning from package directories; dynamic code execution (eval/exec) of decoded data at runtime."
+
+[[rules]]
+id = "ESL-004"
+name = "secret-exfil"
+severity = 9
+wazuh_level = 12
+techniques = ["T1552.001", "T1041"]
+action = "Keep credentials out of build and dev hosts (short-lived tokens, secret managers) and restrict egress to known registries."
+residual_gap = "Misses exfiltration to an ordinary domain; only known sinks and public IP literals are matched."
+detect = "Reads of ~/.ssh, ~/.aws, .npmrc, .pypirc by package-manager processes; outbound webhook, paste and tunnel domains."
+
+[[rules]]
+id = "ESL-005"
+name = "typosquat"
+severity = 5
+wazuh_level = 7
+techniques = ["T1195.001"]
+action = "Pin exact names and hashes in lockfiles; use a private mirror or allow-list of approved packages."
+residual_gap = "Misses typosquats of packages outside the top 1,000, and is a weak signal alone."
+detect = "New or unfamiliar package names in install logs and lockfile diffs; pair with ESL-001..004."
+
+[[rules]]
+id = "ESL-006"
+name = "known-malicious"
+severity = 10
+wazuh_level = 13
+techniques = ["T1195.001"]
+action = "Block installs of versions with an OSV MAL advisory (pin + hash-lock dependencies, private mirror with malware screening)."
+residual_gap = "Only catches packages someone has already reported; a fresh malicious release is invisible."
+detect = "Install-time process/network telemetry from package managers; pair with ESL-001..004."
