@@ -3,9 +3,8 @@
 Contract: `schema/event.schema.json` (JSON Schema draft 2020-12) enforces this document.
 `jsonschema` is a dev dependency used by tests only; the runtime never imports it.
 
-ECS reference: **9.5.0**, taken from https://github.com/elastic/ecs/releases on 2026-10-05
-(read through a summarising fetch tool; the publication date it reported, 2024-08-04, looks
-doubtful, so re-check the version by hand before relying on it). ATT&CK data: v19.2.
+ECS reference: **9.5.0**, the latest release of elastic/ecs, published 2026-08-04T14:33:55Z.
+Source: GitHub API `repos/elastic/ecs/releases/latest`, checked 2026-10-05. ATT&CK data: v19.2.
 
 Every line of the output file is one JSON object, ASCII only (`ensure_ascii`), LF-terminated,
 no BOM, and always under 65,536 bytes.

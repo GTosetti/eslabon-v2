@@ -83,12 +83,13 @@
         "scan_id": {"type": "string"},
         "evidence": {
           "type": "object",
+          "additionalProperties": false,
           "required": ["file", "line", "snippet", "name_hex", "match_count"],
           "properties": {
             "file": {"type": "string", "maxLength": 512},
             "line": {"type": "integer"},
             "snippet": {"type": "string", "maxLength": 1024},
-            "name_hex": {"type": "string", "maxLength": 1024},
+            "name_hex": {"type": "string", "maxLength": 1024, "pattern": "^([0-9a-f]{2})*$"},
             "match_count": {"type": "integer", "minimum": 0}
           }
         },
@@ -102,6 +103,7 @@
         },
         "scan": {
           "type": "object",
+          "additionalProperties": false,
           "required": ["status"],
           "properties": {
             "status": {
@@ -129,7 +131,13 @@
       "then": {
         "required": ["rule", "threat"],
         "properties": {
-          "event": {"required": ["severity"]},
+          "event": {
+            "required": ["severity"],
+            "properties": {
+              "category": {"items": {"enum": ["package", "malware"]}},
+              "type": {"items": {"enum": ["info"]}}
+            }
+          },
           "eslabon": {"required": ["evidence"]}
         }
       }
@@ -138,7 +146,13 @@
       "if": {
         "properties": {"event": {"properties": {"dataset": {"const": "eslabon.scan"}}}}
       },
-      "then": {"properties": {"eslabon": {"required": ["scan"]}}}
+      "then": {
+        "properties": {
+          "event": {"required": ["outcome"]},
+          "eslabon": {"required": ["scan"]}
+        },
+        "not": {"anyOf": [{"required": ["rule"]}, {"required": ["threat"]}]}
+      }
     }
   ]
 }

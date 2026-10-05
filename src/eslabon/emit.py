@@ -22,6 +22,8 @@ _HEX_CAP = 1024
 
 
 def _timestamp(now: datetime) -> str:
+    if now.tzinfo is None or now.utcoffset() is None:
+        raise ValueError("now must be timezone-aware")
     utc = now.astimezone(UTC)
     return utc.strftime("%Y-%m-%dT%H:%M:%S.") + f"{utc.microsecond // 1000:03d}Z"
 

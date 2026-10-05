@@ -166,3 +166,97 @@ def test_arrays_contain_only_strings():
         assert arrays
         for arr in arrays:
             assert all(isinstance(x, str) for x in arr)
+
+
+def test_schema_is_valid():
+    jsonschema.Draft202012Validator.check_schema(SCHEMA)
+
+
+def _summary():
+    return summary_event(ScanResult("ok", [], []), PKG, "s", NOW)
+
+
+def _del(path):
+    def mut(ev):
+        node = ev
+        for k in path[:-1]:
+            node = node[k]
+        del node[path[-1]]
+    return mut
+
+
+def _set(path, value):
+    def mut(ev):
+        node = ev
+        for k in path[:-1]:
+            node = node[k]
+        node[path[-1]] = value
+    return mut
+
+
+FINDING_MUTATIONS = {
+    "no_package_name": _del(["package", "name"]),
+    "bad_rule_id": _set(["rule", "id"], "ESL-007"),
+    "severity_0": _set(["event", "severity"], 0),
+    "severity_11": _set(["event", "severity"], 11),
+    "technique_not_string": _set(["threat", "technique", "id"], [1]),
+    "no_snippet": _del(["eslabon", "evidence", "snippet"]),
+    "no_rule": _del(["rule"]),
+    "bad_ecosystem": _set(["eslabon", "ecosystem"], "gem"),
+    "odd_name_hex": _set(["eslabon", "evidence", "name_hex"], "abc"),
+    "upper_name_hex": _set(["eslabon", "evidence", "name_hex"], "AB"),
+    "evidence_typo_key": _set(["eslabon", "evidence", "snipet"], "x"),
+    "bad_category": _set(["event", "category"], ["package", "other"]),
+    "bad_type": _set(["event", "type"], ["start"]),
+}
+
+
+@pytest.mark.parametrize("name", sorted(FINDING_MUTATIONS))
+def test_finding_schema_rejects(name):
+    ev = finding_event(_finding(), RULE, PKG, "s", NOW)
+    _validate(ev)
+    FINDING_MUTATIONS[name](ev)
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(ev)
+
+
+SUMMARY_MUTATIONS = {
+    "bogus_status": _set(["eslabon", "scan", "status"], "bogus"),
+    "no_status": _del(["eslabon", "scan", "status"]),
+    "no_outcome": _del(["event", "outcome"]),
+    "bad_outcome": _set(["event", "outcome"], "maybe"),
+    "carries_rule": _set(["rule"], {"id": "ESL-001"}),
+    "carries_threat": _set(["threat"], {"technique": {"id": ["T1"]}}),
+    "scan_typo_key": _set(["eslabon", "scan", "file_scanned"], 1),
+    "no_scan": _del(["eslabon", "scan"]),
+}
+
+
+@pytest.mark.parametrize("name", sorted(SUMMARY_MUTATIONS))
+def test_summary_schema_rejects(name):
+    ev = _summary()
+    _validate(ev)
+    SUMMARY_MUTATIONS[name](ev)
+    with pytest.raises(jsonschema.ValidationError):
+        _validate(ev)
+
+
+def test_naive_datetime_rejected():
+    naive = datetime(2026, 10, 5, 18, 0, 0)
+    with pytest.raises(ValueError):
+        finding_event(_finding(), RULE, PKG, "s", naive)
+    with pytest.raises(ValueError):
+        summary_event(ScanResult("ok", [], []), PKG, "s", naive)
+
+
+def test_worst_case_non_bmp_expansion(tmp_path):
+    emoji = chr(0x1F600)
+    f = _finding(file=emoji * 512, snippet=emoji * 1024, name_hex="ab" * 600)
+    pkg = PackageRef(emoji * 600, emoji * 600, "pypi", "ab" * 32)
+    r = ScanResult("parse_error", [f], [], error=emoji * 600)
+    out = tmp_path / "e.jsonl"
+    write_events(
+        [finding_event(f, RULE, pkg, "s", NOW), summary_event(r, pkg, "s", NOW)], out
+    )
+    for line in out.read_bytes().split(b"\n")[:-1]:
+        assert len(line) < 65536
