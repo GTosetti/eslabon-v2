@@ -27,13 +27,6 @@ SMALL = Limits(max_total=1 * 2**20, max_file=256 * 2**10)
 CHUNK = 64 * 2**10
 
 
-@pytest.fixture
-def workdir(tmp_path, monkeypatch):
-    monkeypatch.chdir(tmp_path)
-    yield tmp_path
-    assert sorted(os.listdir(tmp_path)) == [ARCHIVE]
-
-
 def _write(workdir, data: bytes):
     path = workdir / ARCHIVE
     path.write_bytes(data)
@@ -424,9 +417,9 @@ def test_resource_errors_map_to_limits_exceeded(workdir, monkeypatch, exc):
         _run(path)
 
 
-def test_zip_magic_deferred_to_task5(workdir):
+def test_zip_magic_dispatches_to_zip_reader(workdir):
     path = _write(workdir, b"PK\x03\x04" + bytes(100))
-    with pytest.raises(NotImplementedError):
+    with pytest.raises(ParseError):
         _run(path)
 
 

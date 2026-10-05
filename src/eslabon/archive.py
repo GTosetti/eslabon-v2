@@ -8,8 +8,15 @@ actually produced, not on what the headers declare.
 from __future__ import annotations
 
 import bz2
+import copy
+import io
+import lzma
+import os
 import re
+import stat
+import struct
 import tarfile
+import zipfile
 import zlib
 from collections.abc import Iterator
 from dataclasses import dataclass
@@ -25,6 +32,7 @@ _PATH_HEX_MAX = 1024
 _GZ_MAGIC = b"\x1f\x8b"
 _BZ2_MAGIC = b"BZh"
 _ZIP_MAGIC = b"PK\x03\x04"
+_ZIP_EMPTY_MAGIC = b"PK\x05\x06"  # an empty zip is just an EOCD record
 _DRIVE = re.compile(r"^[A-Za-z]:")
 
 
@@ -170,7 +178,7 @@ def _detect(raw: BinaryIO) -> str:
         return "gz"
     if head.startswith(_BZ2_MAGIC):
         return "bz2"
-    if head.startswith(_ZIP_MAGIC):
+    if head.startswith(_ZIP_MAGIC) or head.startswith(_ZIP_EMPTY_MAGIC):
         return "zip"
     return "tar"
 
@@ -201,21 +209,199 @@ def iter_members(
     stats = stats if stats is not None else TarStats()
     with open(path, "rb") as raw:
         kind = _detect(raw)
-        if kind == "zip":
-            yield from _iter_zip(raw, ecosystem, limits, anomalies, stats)
-            return
-        reader = _CountingReader(raw, kind, limits)
+        reader = None
         try:
-            yield from _iter_tar(reader, ecosystem, limits, anomalies, stats)
-            reader.drain()
+            if kind == "zip":
+                yield from _iter_zip(raw, ecosystem, limits, anomalies, stats)
+            else:
+                reader = _CountingReader(raw, kind, limits)
+                yield from _iter_tar(reader, ecosystem, limits, anomalies, stats)
+                reader.drain()
         except (LimitsExceeded, ParseError):
             raise
         except (MemoryError, RecursionError) as exc:
             raise LimitsExceeded(f"resource exhausted: {type(exc).__name__}") from exc
         except Exception as exc:  # malformed input must never escape raw
-            raise ParseError(f"malformed tar: {type(exc).__name__}") from exc
+            label = "zip" if kind == "zip" else "tar"
+            raise ParseError(f"malformed {label}: {type(exc).__name__}") from exc
         finally:
-            stats.bytes_read = reader.total
+            if reader is not None:
+                stats.bytes_read = reader.total
+
+
+# ---------------------------------------------------------------- zip ----
+
+_EOCD = struct.Struct("<4s4H2LH")  # end of central directory, 22 bytes
+_ZIP64_LOC = struct.Struct("<4sLQL")  # ZIP64 EOCD locator, 20 bytes
+_ZIP64_EOCD = struct.Struct("<4sQ2H2L4Q")  # ZIP64 EOCD record, 56 bytes
+_ZIP64_LOC_SIG = b"PK\x06\x07"
+_ZIP64_EOCD_SIG = b"PK\x06\x06"
+_EOCD_SEARCH = 65_557  # max comment (65,535) + EOCD (22): same window as zipfile
+
+
+def _check_eocd(data: bytes, limits: Limits) -> None:
+    """Reject absurd declared sizes before zipfile allocates anything.
+
+    Mirrors zipfile._EndRecData: the comment-less fast path first, then the
+    last signature in the search window. A ZIP64 locator in front of the EOCD
+    means the 64-bit record is what zipfile will use, so that is what we check.
+    """
+    n = len(data)
+    sig = _ZIP_EMPTY_MAGIC
+    if (
+        n >= _EOCD.size
+        and data[n - _EOCD.size : n - 18] == sig
+        and data[-2:] == b"\0\0"
+    ):
+        pos = n - _EOCD.size
+    else:
+        pos = data.rfind(sig, max(0, n - _EOCD_SEARCH))
+        if pos < 0 or n - pos < _EOCD.size:
+            raise ParseError("no end-of-central-directory record")
+    fields = _EOCD.unpack_from(data, pos)
+    entries, cd_size = max(fields[3], fields[4]), fields[5]
+    loc = pos - _ZIP64_LOC.size
+    if loc >= 0 and data[loc : loc + 4] == _ZIP64_LOC_SIG:
+        reloff = _ZIP64_LOC.unpack_from(data, loc)[2]
+        rec = loc - _ZIP64_EOCD.size
+        if 0 <= reloff <= rec and data[reloff : reloff + 4] == _ZIP64_EOCD_SIG:
+            rec = reloff
+        if rec < 0 or data[rec : rec + 4] != _ZIP64_EOCD_SIG:
+            raise ParseError("ZIP64 locator without ZIP64 end-of-central-directory")
+        z64 = _ZIP64_EOCD.unpack_from(data, rec)
+        entries, cd_size = max(z64[6], z64[7]), z64[8]
+    if entries > limits.max_members:
+        raise LimitsExceeded(f"zip declares {entries} entries")
+    if cd_size > limits.max_zip_cd:
+        raise LimitsExceeded(f"zip central directory of {cd_size} bytes")
+
+
+def _lzma_decompressor(f, limits: Limits):
+    """LZMA-in-zip: 2-byte version, 2-byte props size, LZMA1 props, raw stream."""
+    head = f.read(4)
+    if len(head) != 4:
+        raise zipfile.BadZipFile("truncated LZMA header")
+    (psize,) = struct.unpack("<H", head[2:])
+    props = f.read(psize)
+    if psize < 5 or len(props) != psize or props[0] >= 9 * 5 * 5:
+        raise zipfile.BadZipFile("bad LZMA properties")
+    lc, rest = props[0] % 9, props[0] // 9
+    lp, pb = rest % 5, rest // 5
+    # liblzma allocates the declared dictionary up front. We never produce more
+    # than max_file + 2 chunks, so a larger dictionary could never be referenced:
+    # clamping it keeps decoding identical and memory bounded.
+    declared = int.from_bytes(props[1:5], "little")
+    dict_size = max(4096, min(declared, limits.max_file + 2 * _CHUNK))
+    flt = {
+        "id": lzma.FILTER_LZMA1,
+        "dict_size": dict_size,
+        "lc": lc,
+        "lp": lp,
+        "pb": pb,
+    }
+    return lzma.LZMADecompressor(format=lzma.FORMAT_RAW, filters=[flt])
+
+
+def _bounded_decompress(d, data: bytes, max_length: int) -> bytes:
+    return d.decompress(data, max_length)
+
+
+def _raw_decompress_chunks(
+    zf: zipfile.ZipFile, info: zipfile.ZipInfo, limits: Limits
+) -> Iterator[bytes]:
+    """bz2/LZMA members, decompressed with max_length.
+
+    zipfile calls decompress(data) without max_length for these methods, so a
+    few KiB of input can expand to gigabytes in one call. Instead zipfile is
+    asked for the raw compressed bytes (a STORED view of the same entry, so its
+    local-header and encryption checks still run) and the output is bounded
+    here. Semantics match zipfile: output stops at the declared file_size and
+    the CRC-32 is verified at the end.
+    """
+    view = copy.copy(info)
+    view.compress_type = zipfile.ZIP_STORED
+    view.file_size = info.compress_size
+    del view.CRC  # the stored CRC covers the decompressed data, checked below
+    with zf.open(view) as f:
+        if info.compress_type == zipfile.ZIP_BZIP2:
+            d = bz2.BZ2Decompressor()
+        else:
+            d = _lzma_decompressor(f, limits)
+        left = info.file_size
+        crc = 0
+        while left > 0 and not d.eof:
+            if d.needs_input:
+                data = f.read(_CHUNK)
+                if not data:
+                    break
+            else:
+                data = b""
+            out = _bounded_decompress(d, data, min(_CHUNK, left))
+            left -= len(out)
+            crc = zlib.crc32(out, crc)
+            yield out
+    if crc != info.CRC:
+        raise zipfile.BadZipFile(f"Bad CRC-32 for file {info.filename!r}")
+
+
+def _zip_chunks(
+    zf: zipfile.ZipFile, info: zipfile.ZipInfo, limits: Limits
+) -> Iterator[bytes]:
+    if info.compress_type in (zipfile.ZIP_BZIP2, zipfile.ZIP_LZMA):
+        yield from _raw_decompress_chunks(zf, info, limits)
+        return
+    # STORED, DEFLATED (zipfile bounds inflate by the requested size) and
+    # anything else, which zipfile rejects with NotImplementedError on open.
+    with zf.open(info) as f:
+        while chunk := f.read(_CHUNK):
+            yield chunk
+
+
+_BAD_MEMBER_ERRORS = (
+    zipfile.BadZipFile,
+    zlib.error,
+    lzma.LZMAError,
+    EOFError,
+    OSError,
+    ValueError,  # includes UnicodeDecodeError on a UTF-8-flagged local name
+    struct.error,
+)
+
+
+def _read_zip_member(
+    zf: zipfile.ZipFile,
+    info: zipfile.ZipInfo,
+    limits: Limits,
+    anomalies: list[Anomaly],
+    stats: TarStats,
+) -> bytes | None:
+    """Member data, or None after recording an anomaly.
+
+    Bytes count against max_total as they are produced, including those of
+    members that fail later (e.g. on a bad CRC), so failures are not free.
+    """
+    buf = bytearray()
+    try:
+        for chunk in _zip_chunks(zf, info, limits):
+            buf += chunk
+            stats.bytes_read += len(chunk)
+            if stats.bytes_read > limits.max_total:
+                raise LimitsExceeded(f"decompressed total exceeds {limits.max_total}")
+            if len(buf) > limits.max_file:
+                raise LimitsExceeded(f"member larger than {limits.max_file}")
+    except (MemoryError, RecursionError):
+        raise
+    except NotImplementedError as exc:  # subclass of RuntimeError: keep first
+        anomalies.append(_anomaly("unsupported_compression", info.filename, str(exc)))
+        return None
+    except RuntimeError as exc:
+        kind = "encrypted_member" if info.flag_bits & 0x1 else "bad_member"
+        anomalies.append(_anomaly(kind, info.filename, type(exc).__name__))
+        return None
+    except _BAD_MEMBER_ERRORS as exc:
+        anomalies.append(_anomaly("bad_member", info.filename, type(exc).__name__))
+        return None
+    return bytes(buf)
 
 
 def _iter_zip(
@@ -225,8 +411,45 @@ def _iter_zip(
     anomalies: list[Anomaly],
     stats: TarStats,
 ) -> Iterator[Member]:
-    raise NotImplementedError("zip handled in Task 5")
-    yield  # pragma: no cover  (makes this a generator)
+    if os.fstat(raw.fileno()).st_size > limits.max_download:
+        raise LimitsExceeded(f"archive larger than {limits.max_download}")
+    data = raw.read(limits.max_download + 1)
+    if len(data) > limits.max_download:  # file grew after fstat
+        raise LimitsExceeded(f"archive larger than {limits.max_download}")
+    _check_eocd(data, limits)
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except (MemoryError, RecursionError):
+        raise
+    except Exception as exc:
+        raise ParseError(f"cannot open zip: {type(exc).__name__}") from exc
+    with zf:
+        infos = zf.infolist()
+        # zipfile walks the central directory by size, not by the declared count.
+        if len(infos) > limits.max_members:
+            raise LimitsExceeded(f"more than {limits.max_members} members")
+        seen: dict[str, int] = {}
+        for index, info in enumerate(infos):
+            if info.is_dir():
+                continue
+            if stat.S_ISLNK(info.external_attr >> 16):
+                anomalies.append(
+                    _anomaly("link_skipped", info.filename, "symlink not read")
+                )
+                continue
+            norm, kinds = normalize_path(info.filename, ecosystem)
+            for k in kinds:
+                anomalies.append(_anomaly(k, info.filename, _DETAILS[k]))
+            if norm in seen:
+                anomalies.append(
+                    _anomaly("duplicate_name", info.filename, "normalised name repeats")
+                )
+            seen[norm] = index
+            body = _read_zip_member(zf, info, limits, anomalies, stats)
+            if body is None:
+                continue
+            stats.files_scanned += 1
+            yield Member(index=index, path=norm, data=body)
 
 
 _META_TYPES = (
