@@ -440,3 +440,54 @@ def test_zip_magic_dispatches_to_zip_reader(workdir):
 )
 def test_normalize_path(raw, eco, expected, kinds):
     assert normalize_path(raw, eco) == (expected, kinds)
+
+
+MARKER = b"import os; os.system('MARKER-E1')"
+
+
+@pytest.mark.parametrize("compression", ["", "gz"])
+@pytest.mark.parametrize("typeflag", [b"Z", b"V", b"M"])
+def test_unknown_typeflag_scanned_as_regular_file(workdir, compression, typeflag):
+    raw = (
+        ustar_member("pkg-1.0/PKG-INFO", b"Name: pkg")
+        + ustar_member("pkg-1.0/setup.py", MARKER, typeflag)
+        + END
+    )
+    path = _write(workdir, _compress(raw, compression))
+    stats = TarStats()
+    members, anomalies = _run(path, stats=stats)
+    assert [(m.index, m.path, m.data) for m in members] == [
+        (0, "pkg-1.0/PKG-INFO", b"Name: pkg"),
+        (1, "pkg-1.0/setup.py", MARKER),
+    ]
+    assert _kinds(anomalies) == ["unknown_type"]
+    assert anomalies[0].path_hex == b"pkg-1.0/setup.py".hex()
+    assert anomalies[0].detail.isascii()
+    assert stats.files_scanned == 2
+
+
+def test_unknown_typeflag_member_over_file_cap(workdir):
+    raw = ustar_member("pkg-1.0/setup.py", bytes(SMALL.max_file + 1), b"Z") + END
+    path = _write(workdir, raw)
+    with pytest.raises(LimitsExceeded):
+        _run(path, limits=SMALL)
+
+
+def test_unknown_typeflag_duplicate_tracked(workdir):
+    raw = (
+        ustar_member("pkg-1.0/setup.py", b"first")
+        + ustar_member("pkg-1.0/setup.py", MARKER, b"Z")
+        + END
+    )
+    path = _write(workdir, raw)
+    members, anomalies = _run(path)
+    assert [m.data for m in members] == [b"first", MARKER]
+    assert sorted(_kinds(anomalies)) == ["duplicate_name", "unknown_type"]
+
+
+def test_fifo_member_still_bad_member(workdir):
+    raw = ustar_member("pkg-1.0/fifo", b"", b"6") + END
+    path = _write(workdir, raw)
+    members, anomalies = _run(path)
+    assert members == []
+    assert _kinds(anomalies) == ["bad_member"]

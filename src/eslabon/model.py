@@ -28,7 +28,8 @@ class Member:
 
 
 # Anomaly kinds: traversal, absolute_path, link_skipped, zip_symlink, duplicate_name,
-# encrypted_member, unsupported_compression, bad_member, weak_hash_sha1, no_metadata
+# encrypted_member, unsupported_compression, bad_member, unknown_type, weak_hash_sha1,
+# no_metadata
 @dataclass(frozen=True)
 class Anomaly:
     kind: str

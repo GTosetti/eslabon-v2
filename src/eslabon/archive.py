@@ -188,6 +188,8 @@ def _anomaly(kind: str, raw_name: str, detail: str) -> Anomaly:
     return Anomaly(kind=kind, path_hex=to_hex(raw_name)[:_PATH_HEX_MAX], detail=detail)
 
 
+_UNKNOWN_DETAIL = "unknown typeflag; POSIX extractors install it as a regular file"
+
 _DETAILS = {
     "traversal": "name contains a '..' component",
     "absolute_path": "name is absolute or has a drive prefix",
@@ -573,11 +575,16 @@ def _iter_tar(
                 kind = "symlink" if m.issym() else "hardlink"
                 anomalies.append(_anomaly("link_skipped", m.name, f"{kind} not read"))
                 continue
+            # POSIX (and CPython, pip < 24.1, extractall without a filter) install
+            # an unrecognised typeflag as a regular file, so it must be scanned.
+            unknown = m.type not in tarfile.SUPPORTED_TYPES
             sparse = m.sparse is not None or m.type == tarfile.GNUTYPE_SPARSE
-            if not m.isreg() or sparse:
+            if not unknown and (not m.isreg() or sparse):
                 detail = f"unsupported member type {m.type!r}"
                 anomalies.append(_anomaly("bad_member", m.name, detail))
                 continue
+            if unknown:
+                anomalies.append(_anomaly("unknown_type", m.name, _UNKNOWN_DETAIL))
             norm, kinds = normalize_path(m.name, ecosystem)
             for k in kinds:
                 anomalies.append(_anomaly(k, m.name, _DETAILS[k]))
