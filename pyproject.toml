@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "eslabon"
+version = "0.1.0"
+description = "Static detector of malicious PyPI/npm packages that emits JSON Lines for Wazuh."
+requires-python = ">=3.13"
+license = { file = "LICENSE" }
+dependencies = ["yara-python==4.5.4"]
+
+[project.optional-dependencies]
+dev = ["pytest", "ruff", "jsonschema"]
+
+[project.scripts]
+eslabon = "eslabon.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["network: hits real APIs"]
+addopts = "-m 'not network'"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "S"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S101"]
+"scripts/measure_fp.py" = ["S404", "S603"]
