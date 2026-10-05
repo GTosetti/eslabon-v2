@@ -217,3 +217,18 @@ def zip64_declaring(data: bytes, *, entries: int, cd_size: int | None = None) ->
     loc = _ZIP64_LOC.pack(b"PK\x06\x07", 0, rec_pos, 1)
     eocd = _EOCD.pack(b"PK\x05\x06", 0, 0, 0xFFFF, 0xFFFF, 0xFFFFFFFF, 0xFFFFFFFF, 0)
     return body + z64 + loc + eocd
+
+
+def zip_overlap_duplicates(data: bytes, name: str) -> bytes:
+    """Point every central entry called `name` at the first one's local header.
+
+    Build the input with the same name (and data) twice: the local-header name
+    check and the CRC still pass, but zipfile sees two entries sharing one local
+    header and warns "Overlapped entries ... (possible zip bomb)".
+    """
+    buf = bytearray(data)
+    entries = _entry_offsets(data, name)
+    first_local = entries[0][0]
+    for _, central in entries[1:]:
+        struct.pack_into("<L", buf, central + 42, first_local)
+    return bytes(buf)

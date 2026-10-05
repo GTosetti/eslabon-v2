@@ -16,6 +16,7 @@ import re
 import stat
 import struct
 import tarfile
+import warnings
 import zipfile
 import zlib
 from collections.abc import Iterator
@@ -375,6 +376,27 @@ def _read_zip_member(
     anomalies: list[Anomaly],
     stats: TarStats,
 ) -> bytes | None:
+    """_read_zip_member_body, with zipfile's warnings turned into anomalies.
+
+    zipfile only warns (never raises) when two central entries share one local
+    header ("Overlapped entries ... possible zip bomb"); under -W error that
+    would escape as a ParseError, otherwise it is silent noise on stderr.
+    """
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        body = _read_zip_member_body(zf, info, limits, anomalies, stats)
+    if any("Overlapped entries" in str(w.message) for w in caught):
+        anomalies.append(_anomaly("bad_member", info.filename, "overlapped entries"))
+    return body
+
+
+def _read_zip_member_body(
+    zf: zipfile.ZipFile,
+    info: zipfile.ZipInfo,
+    limits: Limits,
+    anomalies: list[Anomaly],
+    stats: TarStats,
+) -> bytes | None:
     """Member data, or None after recording an anomaly.
 
     Bytes count against max_total as they are produced, including those of
@@ -402,6 +424,9 @@ def _read_zip_member(
         anomalies.append(_anomaly("bad_member", info.filename, type(exc).__name__))
         return None
     return bytes(buf)
+
+
+_ZIP_SYMLINK = "symlink mode bit set; pip installs it as a regular file"
 
 
 def _iter_zip(
@@ -433,10 +458,9 @@ def _iter_zip(
             if info.is_dir():
                 continue
             if stat.S_ISLNK(info.external_attr >> 16):
-                anomalies.append(
-                    _anomaly("link_skipped", info.filename, "symlink not read")
-                )
-                continue
+                # pip ignores zip symlink bits and writes the entry as a regular
+                # file, so it must be scanned, not skipped (unlike tar links).
+                anomalies.append(_anomaly("zip_symlink", info.filename, _ZIP_SYMLINK))
             norm, kinds = normalize_path(info.filename, ecosystem)
             for k in kinds:
                 anomalies.append(_anomaly(k, info.filename, _DETAILS[k]))

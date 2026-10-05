@@ -9,6 +9,7 @@ from builders import (
     ZipItem,
     make_zip,
     zip64_declaring,
+    zip_overlap_duplicates,
     zip_patch_crc,
     zip_patch_eocd,
     zip_patch_member,
@@ -205,16 +206,43 @@ def test_zip_absolute_and_drive_paths_flagged(workdir):
     assert _kinds(anomalies) == ["absolute_path", "absolute_path"]
 
 
-def test_zip_symlink_skipped(workdir):
+def test_zip_symlink_bit_is_read_as_regular_file(workdir):
+    # pip ignores zip symlink mode bits and installs the entry as a regular
+    # file, so skipping it would hide importable code.
     path = _write(
         workdir,
         make_zip(
-            [ZipItem("link", b"/etc/passwd", symlink=True), ZipItem("a.py", b"a")]
+            [ZipItem("evil.py", b"import os", symlink=True), ZipItem("a.py", b"a")]
         ),
     )
     members, anomalies = _run(path)
-    assert [(m.index, m.path) for m in members] == [(1, "a.py")]
-    assert _kinds(anomalies) == ["link_skipped"]
+    assert [(m.index, m.path, m.data) for m in members] == [
+        (0, "evil.py", b"import os"),
+        (1, "a.py", b"a"),
+    ]
+    assert _kinds(anomalies) == ["zip_symlink"]
+    assert "pip installs it as a regular file" in anomalies[0].detail
+
+
+def test_zip_symlink_member_still_capped(workdir):
+    path = _write(
+        workdir,
+        make_zip([ZipItem("big", bytes(SMALL.max_file + 1), symlink=True)]),
+    )
+    with pytest.raises(LimitsExceeded):
+        _run(path, limits=SMALL)
+
+
+@pytest.mark.filterwarnings("error")
+def test_overlapped_entries_recorded_no_warning_leaks(workdir, recwarn):
+    data = make_zip([ZipItem("a.py", b"same"), ZipItem("a.py", b"same")])
+    path = _write(workdir, zip_overlap_duplicates(data, "a.py"))
+    members, anomalies = _run(path)
+    assert [m.data for m in members] == [b"same", b"same"]
+    overlap = [a for a in anomalies if a.detail == "overlapped entries"]
+    assert [a.kind for a in overlap] == ["bad_member"]
+    assert "duplicate_name" in _kinds(anomalies)
+    assert len(recwarn) == 0
 
 
 def test_zip_duplicate_name_flagged(workdir):
