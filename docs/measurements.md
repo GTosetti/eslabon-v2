@@ -87,7 +87,14 @@ repository. Run on 2026-10-06.
 Claim for the README: **0 false positives on 194 of 200 fully scanned** packages, with
 the 6 incomplete scans below. No rule (ESL-001..006) fired on any package, incomplete
 ones included. OSV answered for all 200 (`osv_status=ok`); no `MAL-` record matched a
-latest version. Exit codes: 194 x 0, 6 x 2 (the incomplete ones). No rule was changed.
+latest version. Exit codes: 194 x 0, 6 x 2 (the incomplete ones), each consistent with
+its status and findings. No rule was changed.
+
+**Limits of this measurement.** The corpus is 200 very popular, well-maintained
+packages, where the content rules rarely meet a near-miss: ESL-001 was exercised on only
+36 `setup.py` files and ESL-002 on about 3 lifecycle scripts (see the watch list below).
+The 6 incomplete packages give no verdict. The 0 therefore says little about over-firing
+on the long tail of smaller packages: it is measured, not proven.
 
 Timing: 568 s of wall time for the 200 subprocesses (median 2.6 s, max 11.8 s per
 package, download and OSV included); the scan itself (`duration_ms`) had a median of
@@ -99,8 +106,15 @@ beautifulsoup4: symlinks in the sdist, skipped by design).
 
 All six are `limits_exceeded` from Eslabon's own caps (`Limits`: 5,000 members, 10 MiB
 per member). They give no verdict. They are the caps working as designed, not parser
-bugs, so they are listed instead of raised. For PyPI the sdist is chosen first
-(`setup.py` lives there), and sdists of compiled projects carry vendored sources.
+bugs, so they are listed instead of raised. For PyPI the sdist is chosen first, by
+design (`setup.py`, which ESL-001 judges, lives there), and sdists of compiled projects
+carry vendored sources.
+
+How a cap behaves (R50): a per-file, member-count or total cap **aborts the remaining
+members** of the archive. Findings from members read before the cap are kept and
+emitted; nothing after it is scanned (the esbuild package hit the cap on its first
+member, so even its `package.json` went unread: `files_scanned` 0). A `limits_exceeded`
+summary must therefore be triaged as "unscanned remainder", never as "clean".
 
 | package | status | cause (member listing of the same artifact) |
 |---|---|---|
@@ -111,14 +125,20 @@ bugs, so they are listed instead of raised. For PyPI the sdist is chosen first
 | pypi lxml==6.1.3 | limits_exceeded | `src/lxml/etree.c` is 12,822,971 bytes (generated Cython C) |
 | npm @esbuild/linux-x64==0.28.2 | limits_exceeded | `package/bin/esbuild` is 11,427,952 bytes (the Go binary); 3 members in total |
 
-A diagnostic pass outside the shipped pipeline (every member up to 10 MiB, no member
-cap) found no ESL-001, ESL-003 or ESL-004 condition met in these six either.
+A diagnostic pass outside the shipped pipeline (no member-count cap, but members
+larger than 10 MiB skipped, so `etree.c` and the esbuild binary were NOT read) found no
+ESL-001, ESL-003 or ESL-004 condition met in the remaining members of these six.
+
+Future work (roadmap, task 19): fall back to a wheel when a PyPI sdist hits a cap, and
+skip an oversize member (recording an anomaly) and continue instead of aborting the
+remaining members.
 
 ### Watch list from the reviews
 
 Checked explicitly, with the rule strings matched one by one (conditions relaxed to
-"any string") over every member of the 200 corpus archives, plus extra scans of legitimate
-packages outside the top 100.
+"any string") over every member of up to 10 MiB of the 200 corpus archives (larger
+members, such as `etree.c` and the esbuild binary, were not read), plus extra scans of
+legitimate packages outside the top 100.
 
 - **ESL-001** (only the top-level `setup.py` pip runs): 36 of the 100 PyPI artifacts have
   one. Not a single ESL-001 string matched in any of them, so the echo+URL via
@@ -147,7 +167,8 @@ packages outside the top 100.
   key path only in tests/docs), awscli 1.46.1 (incomplete: more than 5,000
   members) and npm aws-sdk 2.1693.0 (incomplete: a member over 10 MiB). In awscli and aws-sdk
   credential paths (AWS credentials, npm rc, kube config) and sinks (the IMDS link-local
-  address, documentation IPs) occur, but never in the same file.
+  address, documentation IPs) occur, but never in the same file (diagnostic pass, all
+  members up to 10 MiB; aws-sdk's oversize member was not read).
 
 ### Known false positives
 

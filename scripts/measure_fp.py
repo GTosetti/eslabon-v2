@@ -19,7 +19,10 @@ repository (or --work).
 The output is a Markdown table per ecosystem and in total: fully scanned (status
 ok), incomplete (any other status, listed by name with status and reason), and
 packages with at least one finding (every finding on a legitimate package is a
-false positive), by rule, followed by the evidence of each finding.
+false positive), by rule, followed by the evidence of each finding and by
+every record that cannot be trusted as-is: an exit code that disagrees with the
+CLI contract (0 = ok and no findings, 1 = ok with findings, 2 = any non-ok
+status), a missing summary, or malformed JSONL lines (counted, not fatal).
 """
 
 from __future__ import annotations
@@ -43,17 +46,24 @@ def load_corpus(path: Path) -> list[dict]:
         return list(tomllib.load(fh)["package"])
 
 
-def _parse_events(path: Path) -> tuple[dict | None, list[dict]]:
-    summary, findings = None, []
+def _parse_events(path: Path) -> tuple[dict | None, list[dict], int]:
+    """(summary event, findings, number of malformed lines) of one JSONL file.
+
+    A line that is not a JSON object of the expected shape is counted, not
+    raised: one bad line must not stop the whole measurement.
+    """
+    summary, findings, bad = None, [], 0
     if not path.exists():
-        return None, []
-    for line in path.read_text("utf-8").splitlines():
+        return None, [], 0
+    for line in path.read_text("utf-8", errors="replace").splitlines():
         if not line.strip():
             continue
-        ev = json.loads(line)
-        if ev["event"]["dataset"] == "eslabon.scan":
-            summary = ev
-        else:
+        try:
+            ev = json.loads(line)
+            if ev["event"]["dataset"] == "eslabon.scan":
+                ev["eslabon"]["scan"]["status"]  # noqa: B018 -- shape check
+                summary = ev
+                continue
             ev_info = ev["eslabon"]["evidence"]
             findings.append(
                 {
@@ -64,7 +74,34 @@ def _parse_events(path: Path) -> tuple[dict | None, list[dict]]:
                     "snippet": ev_info.get("snippet"),
                 }
             )
-    return summary, findings
+        except (ValueError, KeyError, TypeError, AttributeError):
+            bad += 1
+    return summary, findings, bad
+
+
+def expected_exit(status: str, findings: int) -> int:
+    """The CLI's exit-code contract: 2 non-ok, 1 ok with findings, 0 ok clean."""
+    if status != "ok":
+        return 2
+    return 1 if findings else 0
+
+
+def inconsistencies(record: dict) -> list[str]:
+    """Why a record cannot be trusted as-is ([] if it is consistent)."""
+    problems = []
+    if record.get("malformed_lines"):
+        problems.append(f"{record['malformed_lines']} malformed JSONL line(s)")
+    status = record.get("status")
+    if status in (None, "no_summary"):
+        problems.append("no scan summary")
+        return problems
+    want = expected_exit(status, len(record.get("findings") or []))
+    if record.get("exit_code") != want:
+        problems.append(
+            f"exit code {record.get('exit_code')} but status={status} and "
+            f"{len(record.get('findings') or [])} finding(s) imply {want}"
+        )
+    return problems
 
 
 def scan_one(pkg: dict, out: Path, timeout: float) -> dict:
@@ -85,8 +122,9 @@ def scan_one(pkg: dict, out: Path, timeout: float) -> dict:
         record["exit_code"] = None
         record["stderr"] = f"harness timeout after {timeout} s"
     record["wall_s"] = round(time.monotonic() - start, 1)
-    summary, findings = _parse_events(out)
+    summary, findings, bad = _parse_events(out)
     record["findings"] = findings
+    record["malformed_lines"] = bad
     if summary is None:
         record.update(status="no_summary", error=record["stderr"], anomaly_kinds=[])
         return record
@@ -142,12 +180,23 @@ def report(records: list[dict]) -> str:
     fps = [r for r in records if r["findings"]]
     for r in fps:
         for f in r["findings"]:
-            snippet = (f["snippet"] or "").replace("\n", "\\n")[:300]
+            # the CLI's sanitizer already removed line breaks; only shorten
+            snippet = f["snippet"] or ""
+            if len(snippet) > 300:
+                snippet = snippet[:300] + "..."
             out.append(
                 f"- {r['ecosystem']} {r['name']}=={r['version']} {f['rule']} "
                 f"{f['file']}:{f['line']} x{f['match_count']}: `{snippet}`"
             )
     if not fps:
+        out.append("- none")
+    out += ["", "Inconsistent records (exit code vs status/findings, bad JSONL):", ""]
+    flagged = [(r, p) for r in records if (p := inconsistencies(r))]
+    for r, problems in flagged:
+        out.append(
+            f"- {r['ecosystem']} {r['name']}=={r['version']}: " + "; ".join(problems)
+        )
+    if not flagged:
         out.append("- none")
     walls = sorted(r["wall_s"] for r in records)
     if walls:
