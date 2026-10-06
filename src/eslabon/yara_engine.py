@@ -19,6 +19,13 @@ _BEFORE = 120  # snippet context before the first match
 _AFTER = 200  # and after it
 
 
+def _leading_space(matched: bytes) -> int:
+    """Bytes of whitespace a match starts with (e.g. a prefix byte that is a
+    line break): the finding points at the first byte after them, so ``line``
+    is the line of the evaluator, not of the preceding break."""
+    return len(matched) - len(matched.lstrip())
+
+
 def compile_rules() -> yara.Rules:
     """Compile every bundled ``rules/*.yar``; a YARA warning is an error."""
     root = resources.files("eslabon").joinpath("rules")
@@ -47,8 +54,9 @@ def scan_member(m: Member, ctx: ScanContext) -> list[Finding]:
         esl_id = match.meta["esl_id"]
         for s in match.strings:
             for inst in s.instances:
-                first, count = merged.get(esl_id, (inst.offset, 0))
-                merged[esl_id] = (min(first, inst.offset), count + 1)
+                off = inst.offset + _leading_space(inst.matched_data)
+                first, count = merged.get(esl_id, (off, 0))
+                merged[esl_id] = (min(first, off), count + 1)
 
     data = m.data
     name_hex = to_hex(m.raw_path or m.path)

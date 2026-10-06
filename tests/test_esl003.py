@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import base64
 import json
+import os
 import random
 from pathlib import Path
 
@@ -109,13 +110,15 @@ def test_js_eval_atob_fires(ctx):
         # Buffer literal longer than 50 chars: the commonest npm shape
         EV + "(Buffer.from('" + LONG_B64 + "', 'base" + "64').toString())",
         EV + "(Buffer.from('" + PAYLOAD_HEX + "', 'hex').toString())",
-        "Function(Buffer.from(s, 'BASE" + "64').toString())()",
+        "Func" + "tion(Buffer.from(s, 'BASE" + "64').toString())()",
         EX + "(base64.b32" + "decode(s))",
         EX + "(binascii.a2b_" + "base64(s))",
         EX + "(codecs." + "decode(s, 'rot13'))",
         EX + "(lzma.decom" + "press(blob))",
         EX + "(binascii.unhex" + "lify(s))",
         EV + "(base64.a85" + "decode(s))",
+        EX + "(codecs." + "decode(s, 'base" + "64'))",
+        "window." + EV + "(at" + "ob(s))",
     ],
 )
 def test_other_shapes_fire(ctx, src):
@@ -142,6 +145,10 @@ def test_b64_data_without_evaluator_silent(ctx):
         "code = base64." + B64D + "(s)\n" + EX + "(code)\n",
         # a safe evaluator that only parses literals
         "ast.literal_" + EV + "(base64." + B64D + "(s).decode())",
+        # method calls named like an evaluator (re.compile, model.eval)
+        "re.compile(codecs." + "decode(pat, 'unicode_escape'))",
+        "model." + EV + "(base64." + B64D + "(s))",
+        "obj." + EX + "(zlib.decom" + "press(b))",
     ],
 )
 def test_non_adjacent_or_safe_is_silent(ctx, src):
@@ -288,19 +295,35 @@ def test_black_formatted_call_fires(ctx):
     assert len(yara_engine.scan_member(_member("setup.py", crlf), ctx)) == 1
 
 
-def test_repo_carries_no_literal_pattern():
-    # Our own rule (and AV/GitHub scanners) would flag committed literals.
-    needles = [
-        ("ex" + "ec(base64").encode(),
-        ("ev" + "al(atob").encode(),
-        ("ev" + "al(Buffer.from").encode(),
-    ]
+_SKIP_DIRS = {
+    ".venv", ".git", "__pycache__", ".superpowers", ".pytest_cache", ".ruff_cache",
+    "build", "dist",
+}
+
+
+def test_repo_files_do_not_trip_the_rules():
+    # Our own rules (and AV/GitHub scanners) would flag committed literals, so
+    # every repo file is matched against the shipped rules themselves.
+    rules = yara_engine.compile_rules()
     root = Path(__file__).parent.parent
     hits = []
-    for sub in ("src", "tests"):
-        for p in (root / sub).rglob("*"):
-            if p.suffix not in (".py", ".yar", ".toml", ".json") or not p.is_file():
+    for dirpath, dirnames, filenames in os.walk(root):
+        dirnames[:] = [
+            d for d in dirnames if d not in _SKIP_DIRS and not d.endswith(".egg-info")
+        ]
+        for name in filenames:
+            path = Path(dirpath) / name
+            if path.stat().st_size > 10 * 2**20:
                 continue
-            data = p.read_bytes()
-            hits += [f"{p.name}: {n!r}" for n in needles if n in data]
-    assert hits == []
+            if rules.match(data=path.read_bytes()):
+                hits.append(path.relative_to(root).as_posix())
+    assert hits == [], f"files matching the shipped rules: {hits}"
+
+
+def test_line_is_the_evaluator_line_not_the_preceding_break(ctx):
+    nl = chr(10)
+    src = "x = 1" + nl + EX + "(base64." + B64D + "(s))" + nl
+    found = yara_engine.scan_member(_member("a.py", src.encode("ascii")), ctx)
+    assert found[0].line == 2
+    found = yara_engine.scan_member(_member("a.py", src[6:].encode("ascii")), ctx)
+    assert found[0].line == 1  # evaluator at offset 0 (start of data)

@@ -194,7 +194,7 @@ enforces it. Every emitted line is validated in tests. A change of meaning bumps
  "package":{"name":"reqeusts","version":"1.0.0"},
  "file":{"hash":{"sha256":"…"}},
  "eslabon":{"schema_version":"1.0","attack_version":"19.2","ecosystem":"pypi","scan_id":"…",
-   "evidence":{"file":"setup.py","line":14,"snippet":"exec(base64.b64decode(…","name_hex":"…"},
+   "evidence":{"file":"setup.py","line":14,"snippet":"exec(<decoded payload>)","name_hex":"…"},
    "mitigation":{"action":"…","residual_gap":"…","detect":"…"}}}
 ```
 
