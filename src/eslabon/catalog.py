@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass
 from importlib import resources
+
+_TECHNIQUE_ID = re.compile(r"^T[0-9]{4}(?:\.[0-9]{3})?$")
 
 
 @dataclass(frozen=True)
@@ -21,6 +24,25 @@ class Rule:
     residual_gap: str
     detect: str
     wazuh_mitre: list[str]
+
+
+def _wazuh_mitre(r: dict) -> list[str]:
+    """IDs for the Wazuh XML <mitre>: the rule's techniques unless overridden.
+
+    The override exists because Wazuh's bundled ATT&CK database is older than
+    the catalog's (e.g. it lacks T1027.013); events keep `techniques`.
+    """
+    if "wazuh_mitre" not in r:
+        return list(r["techniques"])
+    ids = r["wazuh_mitre"]
+    if (
+        not isinstance(ids, list)
+        or not ids
+        or not all(isinstance(t, str) and _TECHNIQUE_ID.fullmatch(t) for t in ids)
+        or len(set(ids)) != len(ids)
+    ):
+        raise ValueError(f"{r['id']}: bad wazuh_mitre {ids!r}")
+    return list(ids)
 
 
 def load_catalog() -> dict[str, Rule]:
@@ -47,6 +69,6 @@ def load_catalog() -> dict[str, Rule]:
             action=r["action"],
             residual_gap=r["residual_gap"],
             detect=r["detect"],
-            wazuh_mitre=list(r["techniques"]),
+            wazuh_mitre=_wazuh_mitre(r),
         )
     return out

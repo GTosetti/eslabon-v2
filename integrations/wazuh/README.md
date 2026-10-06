@@ -22,7 +22,7 @@ Wazuh emits **one alert per event**, so each event reaches exactly one leaf:
 | `100300` | 0 | `json` decoder, location `events.jsonl$`, `event.module` = `eslabon` | parent, no alert |
 | `100301` | 11 | finding, `rule.id` = `ESL-001` (pypi-install-exec) | T1546.016, T1059.006 |
 | `100302` | 11 | finding, `ESL-002` (npm-install-script-exec) | T1546.016, T1059.007 |
-| `100303` | 12 | finding, `ESL-003` (encoded-exec) | T1027.013, T1140 |
+| `100303` | 12 | finding, `ESL-003` (encoded-exec) | T1027, T1140 (the event carries T1027.013) |
 | `100304` | 12 | finding, `ESL-004` (secret-exfil) | T1552.001, T1041 |
 | `100305` | 7 | finding, `ESL-005` (typosquat) | T1195.001 |
 | `100306` | 13 | finding, `ESL-006` (known-malicious); also the Sigma translation | T1195.001 |
@@ -31,6 +31,13 @@ Wazuh emits **one alert per event**, so each event reaches exactly one leaf:
 
 Levels and `<mitre>` IDs come from `src/eslabon/catalog.toml` (`wazuh_level`,
 `wazuh_mitre`); `tests/test_integrations.py` fails if they drift. No rule is level 15.
+`wazuh_mitre` defaults to the rule's `techniques`; a rule overrides it only where
+Wazuh's database lacks an ID (see "ATT&CK version").
+
+**Groups.** Every rule gets `eslabon_v2` from the file-level `<group name="eslabon_v2,">`
+only; the per-rule `<group>` adds just `supply_chain`, `sigma` or `scan_summary`.
+Repeating `eslabon_v2` inside a rule made the alert's `rule.groups`
+`['eslabon_v2', 'eslabon_v2', 'supply_chain']` in E7.
 
 **`rule.id` and `rule.name` in the XML are our JSON fields.** In the alert they are
 stored under `data.rule.*`, next to Wazuh's own `rule.id` (`1003xx`). This is the
@@ -111,7 +118,11 @@ Wazuh's ATT&CK database is **v13.1** (since 4.8), so the dashboard shows older n
 e.g. *Defense Evasion* for TA0005 (the events carry v19.2's *Stealth*). Each `<mitre>`
 ID must be checked in `wazuh-logtest` for "not found" warnings. If a sub-technique is
 missing from Wazuh's database, its parent is used in the XML and this README says so.
-No substitution has been made yet.
+
+Substitutions, measured in E7: **`T1027.013` -> `T1027` for rule `100303`** (logtest:
+`WARNING: Mitre Technique ID 'T1027.013' not found in database.`). It is recorded as
+`wazuh_mitre = ["T1027", "T1140"]` for ESL-003 in `catalog.toml`; the events keep
+`T1027.013` in `threat.technique.id`.
 
 ## What to verify in E7 (design section 11)
 

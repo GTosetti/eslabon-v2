@@ -20,8 +20,63 @@ def test_six_rules_with_spec_values(rid, name, sev, level, techs):
     assert rule.severity == sev
     assert rule.wazuh_level == level
     assert rule.techniques == techs
-    assert rule.wazuh_mitre == techs
     assert len(load_catalog()) == 6
+
+
+def test_wazuh_mitre_defaults_to_techniques_except_esl003():
+    # R54: T1027.013 is absent from Wazuh's bundled MITRE db (logtest warning),
+    # so ESL-003 overrides it with the parent; events keep the v19.2 IDs.
+    c = load_catalog()
+    assert c["ESL-003"].wazuh_mitre == ["T1027", "T1140"]
+    assert c["ESL-003"].techniques == ["T1027.013", "T1140"]
+    for rid, rule in c.items():
+        if rid != "ESL-003":
+            assert rule.wazuh_mitre == rule.techniques, rid
+
+
+def _catalog_with(monkeypatch, extra):
+    """load_catalog with `extra` TOML lines appended to rule ESL-001."""
+    import eslabon.catalog as catalog_mod
+
+    real = catalog_mod.resources.files("eslabon").joinpath("catalog.toml")
+    text = real.read_text("utf-8")
+    anchor = 'id = "ESL-001"\n'
+    assert text.count(anchor) == 1
+    text = text.replace(anchor, anchor + extra)
+
+    class _Fake:
+        def joinpath(self, _name):
+            return self
+
+        def read_text(self, _enc):
+            return text
+
+    monkeypatch.setattr(catalog_mod.resources, "files", lambda _pkg: _Fake())
+    return catalog_mod.load_catalog
+
+
+@pytest.mark.parametrize(
+    "bad",
+    [
+        'wazuh_mitre = []\n',
+        'wazuh_mitre = ["X1027"]\n',
+        'wazuh_mitre = ["T1027.13"]\n',
+        'wazuh_mitre = "T1027"\n',
+        'wazuh_mitre = [1027]\n',
+        'wazuh_mitre = ["T1027", "T1027"]\n',
+    ],
+)
+def test_bad_wazuh_mitre_rejected(monkeypatch, bad):
+    load = _catalog_with(monkeypatch, bad)
+    with pytest.raises(ValueError):
+        load()
+
+
+def test_good_wazuh_mitre_override_loaded(monkeypatch):
+    load = _catalog_with(monkeypatch, 'wazuh_mitre = ["T1546", "T1059.006"]\n')
+    rule = load()["ESL-001"]
+    assert rule.wazuh_mitre == ["T1546", "T1059.006"]
+    assert rule.techniques == ["T1546.016", "T1059.006"]
 
 
 def test_no_level_15():

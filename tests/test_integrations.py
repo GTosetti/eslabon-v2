@@ -193,10 +193,16 @@ def test_no_level_15():
 
 
 def test_every_rule_in_group_eslabon_v2_and_parent_shape():
+    # every rule sits directly in the file-level <group name="eslabon_v2,">,
+    # which Wazuh adds to rule.groups (the lab query filters on it)
+    root = ET.parse(RULES_XML).getroot()  # noqa: S314 -- our own committed file
+    assert root.tag == "group" and root.get("name") == "eslabon_v2,"
+    assert [r.get("id") for r in root.findall("rule")] == [
+        r.get("id") for r in _rules()
+    ]
     model = _model()
     for rid, rule in model.items():
         groups = ",".join(rule["groups"]).split(",")
-        assert "eslabon_v2" in groups, rid
         assert "eslabon" not in groups, rid  # v1's group
     parent = model["100300"]
     assert parent["level"] == 0 and parent["parent"] is None
@@ -207,6 +213,22 @@ def test_every_rule_in_group_eslabon_v2_and_parent_shape():
         if rid != "100300":
             assert rule["parent"] == "100300", rid
             assert rule["location"] is None and rule["decoded_as"] is None
+
+
+def test_no_rule_repeats_eslabon_v2_in_its_own_group():
+    # R54: the enclosing group already tags every rule; repeating it inside a
+    # rule gave rule.groups = ['eslabon_v2', 'eslabon_v2', 'supply_chain']
+    model = _model()
+    for rid, rule in model.items():
+        inner = [g for g in ",".join(rule["groups"]).split(",") if g]
+        assert "eslabon_v2" not in inner, rid
+        assert len(inner) == len(set(inner)), rid
+    assert model["100300"]["groups"] == []
+    for n in range(1, 7):
+        assert "supply_chain" in model[f"10030{n}"]["groups"][0].split(",")
+    assert model["100306"]["groups"] == ["supply_chain,sigma,"]
+    assert model["100310"]["groups"] == ["scan_summary,"]
+    assert model["100311"]["groups"] == ["scan_summary,"]
 
 
 def test_xml_regexes_are_in_the_safe_subset():
