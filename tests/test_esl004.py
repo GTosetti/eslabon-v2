@@ -142,7 +142,16 @@ def test_aws_credentials_plus_ngrok_fires():
         "~/" + KUBE_CFG,
         JS_ENV_DUMP,
         "JSON." + "stringify( process" + ".env )",
-        "Object." + "entries(process" + ".env).map(String)",
+        "JSON." + "stringify({ ...process" + ".env })",
+        "JSON." + "stringify(Object." + "entries(process" + ".env))",
+        "JSON." + "stringify(Object." + "assign({}, process" + ".env))",
+        "json." + "dumps({**os" + ".environ})",
+        "json." + "dumps( { ** os" + ".environ } )",
+        "path.join(h, '." + "ssh', 'id_" + "rsa')",
+        "os.path.join(home, \"." + "ssh\", \"id_" + "dsa\")",
+        "Path.home() / '." + "ssh' / 'id_" + "ed25519'",
+        "path.join(h, '." + "aws', 'creden" + "tials')",
+        "Path.home() / \"." + "AWS\" / \"CREDEN" + "TIALS\"",
         PY_ENV_DUMP,
         "json." + "dumps(os" + ".environ.copy())",
         "str(os" + ".environ)",
@@ -263,6 +272,34 @@ def test_node_env_stringify_silent():
         + ".env.NODE_ENV)};fetch('" + NORMAL + "');var s='" + SLACK + "';"
     )
     assert _scan(src, "dist/bundle.js") == []
+
+
+def test_sdk_env_copy_for_child_process_silent():
+    # @anthropic-ai/claude-agent-sdk: iterate the environment to copy it for a
+    # child process, a connectivity probe to a public resolver, and a secret
+    # redaction regex naming a webhook host. Iteration is not serialisation.
+    src = (
+        "function f(){let e={};for(let[t,n]of Object." + "entries(process"
+        + ".env)){if(t.startsWith(\"X_\"))continue;e[t]=n}return e}"
+        + "await e.head(\"http" + "://1.1" + ".1.1\","
+        + "{signal:AbortSignal.timeout(1000)});"
+        + "var r=[[/x/g,\"hooks.sla" + "ck.com/<redacted>\"]];"
+    )
+    assert _scan(src, "sdk.mjs") == []
+
+
+@pytest.mark.parametrize(
+    "src",
+    [
+        "Object." + "entries(process" + ".env).map(String)",
+        "const env = {...process" + ".env, FOO: '1'}",
+        "env = {**os" + ".environ, 'FOO': '1'}",
+        "path.join(h, '." + "ssh', 'known_hosts')",
+        "path.join(h, '." + "aws', 'config')",
+    ],
+)
+def test_child_env_idioms_and_other_dotfiles_silent(src):
+    assert _scan(src + NL + "x = '" + DISCORD + "'" + NL) == []
 
 
 def test_dict_environ_to_subprocess_silent():
@@ -397,6 +434,11 @@ def test_capped_ip_string_is_kept_unfiltered():
         "process" + ".env)",
         "JSON." + "stringify(" + " " * 9,
         "json." + "dumps(dict(" + " " * 9,
+        "JSON." + "stringify({" + " " * 9,
+        "JSON." + "stringify(Object.assign({}" + " " * 9,
+        "json." + "dumps({" + " " * 9 + "**",
+        "'." + "ssh', '",
+        "'." + "ssh' / '" + "id_" + "rs",
         "." + "npm" + "rc",
         "toast.",
         "oast.",

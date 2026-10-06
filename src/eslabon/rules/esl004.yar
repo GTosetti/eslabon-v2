@@ -1,9 +1,18 @@
 // ESL-004 secret-exfil: one file that names a credential source AND an
 // exfiltration sink. Applied to every member of both ecosystems.
-// Credential sources: well-known secret files (a path separator may be '/'
-// or one or two backslashes) and serialisation of the WHOLE environment.
+// Credential sources: well-known secret files, as a path (a separator may be
+// '/' or one or two backslashes) or as quoted path segments joined by ',' or
+// '/' (path.join(h, '.ssh', 'id_rsa'), Path.home() / '.aws' / 'credentials'),
+// and serialisation of the WHOLE environment, also when wrapped:
+// JSON.stringify of process.env, {...process.env}, Object.entries(process.env)
+// or Object.assign({}, process.env); json.dumps of os.environ, dict(os.environ)
+// or {**os.environ}; str(os.environ).
 // A single variable (JSON.stringify(process.env.NODE_ENV), in every webpack
-// bundle) is not a dump: JSON.stringify needs ')' right after process.env.
+// bundle) is not a dump: process.env must be followed by ')' or '}'. Python
+// json.dumps(os.environ[...]) still counts on purpose: one secret is enough.
+// Left out deliberately: bare {...process.env}, {**os.environ} and
+// Object.entries(process.env) iteration, the idioms that copy the environment
+// for a child process.
 // Sinks: webhook, paste, tunnel and OAST/interaction hosts, and an http(s)
 // URL whose host is an IPv4 literal. The IP string only NOMINATES: the engine
 // keeps an instance only if the address is global (no loopback, RFC 1918,
@@ -12,8 +21,8 @@
 // OAST hosts need a non-label byte before 'oast' so toast libraries
 // (toast.message, react-hot-toast) stay silent, and a word boundary after.
 // Every pattern is a literal or a bounded regex; no window crosses lines.
-// Gaps: a host built by concatenation, an ordinary domain, a path built with
-// path.join('.ssh', 'id_rsa'), an integer or hex IP, a raw socket.
+// Gaps: a host built by concatenation, an ordinary domain, an integer, hex or
+// four-digit IP, a raw socket, a path built from variables.
 
 rule esl004_secret_exfil
 {
@@ -28,9 +37,11 @@ rule esl004_secret_exfil
         $cred_git = ".git-credentials" nocase
         $cred_docker = /\.docker(\/|\\{1,2})config\.json/ nocase
         $cred_kube = /\.kube(\/|\\{1,2})config/ nocase
-        $cred_js_env = /JSON\.stringify\(\s{0,10}process\.env\s{0,10}\)/
-        $cred_js_entries = /Object\.entries\(\s{0,10}process\.env/
+        $cred_ssh_seg = /['"]\.ssh['"]\s{0,10}[,\/]\s{0,10}['"]id_(rsa|ed25519|ecdsa|dsa)/ nocase
+        $cred_aws_seg = /['"]\.aws['"]\s{0,10}[,\/]\s{0,10}['"]credentials/ nocase
+        $cred_js_env = /JSON\.stringify\(\s{0,10}(\{\s{0,10}\.\.\.\s{0,10}|Object\.entries\(\s{0,10}|Object\.assign\(\s{0,10}\{\s{0,10}\}\s{0,10},\s{0,10})?process\.env\s{0,10}[)}]/
         $cred_py_env = /json\.dumps\(\s{0,10}(dict\(\s{0,10})?os\.environ/
+        $cred_py_env_spread = /json\.dumps\(\s{0,10}\{\s{0,10}\*\*\s{0,10}os\.environ\s{0,10}\}/
         $cred_py_str = /str\(\s{0,10}os\.environ\s{0,10}\)/
         $sink_discord = /discord(app)?\.com\/api\/webhooks/ nocase
         $sink_telegram = /api\.telegram\.org\/bot/ nocase
