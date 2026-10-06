@@ -52,7 +52,7 @@ These are listed here by name instead of being suppressed. There is no allowlist
   malicious packages). That causes most of the PyPI false positives above.
 
 The same counts were obtained again on 2026-10-06 when the false-positive measurement
-below was run (task 16).
+below was run (task 16). Measured with the scanner at commit 52d0d8e (src/ unchanged through 13899a9).
 
 ## False positives on the legitimate corpus (ESL-001..006)
 
@@ -66,6 +66,7 @@ above) to their latest registry version: PyPI `info.version` from
 `eslabon.fetch`) and checks with `fetch.resolve` that the exact version has an artifact
 `eslabon scan` would download. No name was skipped. SHA-256 of the file as committed (LF
 line endings): `8c911be00db6af646ffa722fe173041ae77c227ca427fbce6037b3efc605a26c`.
+Measured with the scanner at commit 52d0d8e (src/ unchanged through 13899a9).
 
 ### Method
 
