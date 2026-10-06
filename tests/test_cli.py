@@ -341,11 +341,13 @@ def test_local_metadata_read_or_no_metadata_anomaly(dirs):
     target = _put(
         dirs, "anon.tgz", make_tar([TarItem("package/index.js", b"x")])
     )
-    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    # no name: OSV fails closed (R46)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 2
     s = _summary(_events(dirs[1]))
     assert s["package"] == {"name": "unknown", "version": ""}
     assert "no_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
-    assert s["eslabon"]["scan"]["status"] == "ok"
+    assert s["eslabon"]["scan"]["status"] == "osv_unavailable"
+    assert s["eslabon"]["scan"]["osv_status"] == "unavailable"
 
 
 def test_metadata_from_sdist_pkg_info(dirs):
@@ -405,7 +407,8 @@ def test_malformed_npm_metadata_is_no_metadata(dirs, body):
     target = _put(
         dirs, "m.tgz", make_tar([TarItem("package/package.json", body)])
     )
-    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    # no name: OSV fails closed (R46)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 2
     s = _summary(_events(dirs[1]))
     assert "no_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
     assert s["package"]["name"] == "unknown"
@@ -782,7 +785,8 @@ def test_r26_sdist_two_pkg_info_is_ambiguous(dirs):
 def test_r26_npm_bare_package_json_is_ignored(dirs):
     data = make_tar([TarItem("package.json", PKG_JSON)])  # strip:1 drops it
     target = _put(dirs, "bare.tgz", data)
-    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    # no name: OSV fails closed (R46)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 2
     s = _summary(_events(dirs[1]))
     assert s["package"]["name"] == "unknown"
     assert "no_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
@@ -797,7 +801,8 @@ def test_r26_npm_two_package_json_is_ambiguous(dirs):
         ]
     )
     target = _put(dirs, "two.tgz", data)
-    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    # no name: OSV fails closed (R46)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 2
     s = _summary(_events(dirs[1]))
     assert s["package"]["name"] == "unknown"
     assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
@@ -1020,7 +1025,8 @@ def test_esl005_scoped_npm_pack_name_is_no_mismatch(dirs, monkeypatch, filename)
 def test_esl005_no_name_at_all_has_no_identity_source(dirs, monkeypatch):
     _install_top(monkeypatch, [], ["react"])
     target = _put(dirs, "anon.tgz", make_tar([TarItem("package/index.js", b"x")]))
-    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    # no name: OSV fails closed (R46)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 2
     s = _summary(_events(dirs[1]))
     assert "identity_source" not in s["eslabon"]
 

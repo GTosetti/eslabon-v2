@@ -17,7 +17,14 @@ import pytest
 
 from eslabon import typosquat
 from eslabon.sanitize import to_hex
-from eslabon.typosquat import TopList, check, distance, name_from_filename, normalize
+from eslabon.typosquat import (
+    TopList,
+    check,
+    distance,
+    identity_from_filename,
+    name_from_filename,
+    normalize,
+)
 
 PYPI = TopList.from_names(
     [
@@ -302,3 +309,24 @@ def test_name_from_filename(filename, kind, expected):
 )
 def test_name_from_filename_prefers_the_metadata_name(filename, kind, meta, expected):
     assert name_from_filename(filename, kind, meta) == expected
+
+
+@pytest.mark.parametrize(
+    ("filename", "kind", "meta", "expected"),
+    [
+        ("requests-2.32.3-py3-none-any.whl", "wheel", None, ("requests", "2.32.3")),
+        ("pkg-.whl", "wheel", None, ("pkg", None)),
+        ("chalk-5.6.2.tgz", "npm", None, ("chalk", "5.6.2")),
+        ("chalk-5.6.2-beta.1.tgz", "npm", None, ("chalk", "5.6.2-beta.1")),
+        ("evil-pkg-6.6.6.tar.gz", "sdist", None, ("evil-pkg", "6.6.6")),
+        ("pyyaml-6.0-1.tar.gz", "sdist", "PyYAML", ("pyyaml", "6.0-1")),
+        ("foo-1.0.0-2.tgz", "npm", None, ("foo-1.0.0", "2")),
+        ("noversion.whl", "wheel", None, None),
+        ("clean.tgz", "npm", None, None),
+        ("payload.tar.gz", "sdist", None, None),
+    ],
+)
+def test_identity_from_filename_name_and_version(filename, kind, meta, expected):
+    assert identity_from_filename(filename, kind, meta) == expected
+    name = expected[0] if expected else None
+    assert name_from_filename(filename, kind, meta) == name

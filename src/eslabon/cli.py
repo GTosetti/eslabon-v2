@@ -119,15 +119,25 @@ def _scan(args: argparse.Namespace) -> int:
         except Exception as exc:  # e.g. spawn/pickling failure: still summarise
             result = _failed(f"worker error: {type(exc).__name__}")
         pkg = PackageRef(result.metadata_name, result.metadata_version, ecosystem, sha)
-    names: list[str] = []
+    # Identity names first, on their own: a broken top list (ESL-005) must not
+    # stop ESL-006, and vice versa. None means "could not be computed".
+    idents: list[tuple[str, str | None]] | None
     try:
-        names = _identity_checks(target, ecosystem, result)
+        idents = _identity_names(target, ecosystem, result)
+    except Exception as exc:
+        idents = None
+        _downgrade(result, f"identity error: {type(exc).__name__}")
+    try:
+        for name, _ in idents or []:
+            finding = typosquat.check(name, ecosystem)
+            if finding is not None and finding not in result.findings:
+                result.findings.append(finding)
     except Exception as exc:  # e.g. a missing or corrupt bundled top list
         _downgrade(result, f"typosquat error: {type(exc).__name__}")
     if args.offline:
-        result.osv_status = "skipped"
+        result.osv_status = "skipped"  # only ever the user's explicit opt-out
     else:
-        _osv_checks(names, ecosystem, result)
+        _osv_checks(idents, ecosystem, result)
 
     now = datetime.now(UTC)
     # Findings first, then the summary, written separately: whatever goes wrong
@@ -152,58 +162,65 @@ def _scan(args: argparse.Namespace) -> int:
 _MISMATCH = "metadata name and archive file name differ"
 
 
-def _identity_checks(target: Path, ecosystem: str, result: ScanResult) -> list[str]:
-    """Run the package-level identity rule (ESL-005) once, in the parent.
+def _identity_names(
+    target: Path, ecosystem: str, result: ScanResult
+) -> list[tuple[str, str | None]]:
+    """The (name, version) pairs the package claims to be, for ESL-005/006.
 
     The name comes from the archive metadata; if there is none (no_metadata,
     ambiguous_metadata, or the worker never ran) it falls back to the name in
-    the archive's FILE name, so an attacker cannot switch the rule off by
-    breaking the metadata. If both exist and differ, both are checked and the
-    anomaly identity_mismatch is recorded.
+    the archive's FILE name, so an attacker cannot switch the rules off by
+    breaking the metadata. If both exist and differ, both are returned and the
+    anomaly identity_mismatch is recorded. Each name carries ITS OWN version:
+    the metadata version for the metadata name (the file-name version if the
+    metadata has none), the file-name version for the file-name name; None
+    when no version is parseable for that name.
     """
     meta = result.metadata_name
-    from_file = typosquat.name_from_filename(
+    from_file = typosquat.identity_from_filename(
         target.name, archive_kind(target, ecosystem), meta
     )
-    names: list[str] = []
+    file_name, file_version = from_file if from_file else (None, None)
+    idents: list[tuple[str, str | None]] = []
     if meta:
-        names.append(meta)
         result.identity_source = "metadata"
-        if from_file and not typosquat.same_identity(meta, from_file, ecosystem):
-            names.append(from_file)
+        same = file_name is not None and typosquat.same_identity(
+            meta, file_name, ecosystem
+        )
+        version = result.metadata_version or (file_version if same else None)
+        idents.append((meta, version))
+        if file_name and not same:
+            idents.append((file_name, file_version))
             result.anomalies.append(Anomaly("identity_mismatch", "", _MISMATCH))
-    elif from_file:
-        names.append(from_file)
+    elif file_name:
+        idents.append((file_name, file_version))
         result.identity_source = "filename"
-    for name in names:
-        finding = typosquat.check(name, ecosystem)
-        if finding is not None and finding not in result.findings:
-            result.findings.append(finding)
-    return names
+    return idents
 
 
-def _osv_checks(names: list[str], ecosystem: str, result: ScanResult) -> None:
-    """ESL-006: ask OSV about the names ESL-005 checked (even if the worker
-    failed, so breaking the archive cannot switch the rule off).
+_NO_NAME = "osv: no package name to query"
 
-    The metadata name is queried with the metadata version; a differing
-    file-name name has no trustworthy version and is queried without one (all
-    advisories for that name). An unavailable OSV makes the status at least
-    osv_unavailable, never better than what the worker reported. With no name
-    at all nothing can be asked, and osv_status says so: "skipped".
+
+def _osv_checks(
+    idents: list[tuple[str, str | None]] | None, ecosystem: str, result: ScanResult
+) -> None:
+    """ESL-006: ask OSV about the names ESL-005 checks, each with its own
+    version (even if the worker failed, so breaking the archive cannot switch
+    the rule off).
+
+    Fail closed: if there is no name to ask about (or the names could not be
+    computed), OSV is "unavailable", not "skipped" -- "skipped" means only the
+    user's --offline. An unavailable OSV makes the status at least
+    osv_unavailable, never better than what the worker reported.
     """
-    if not names:
-        result.osv_status = "skipped"
-        return
-    queries = [
-        (name, result.metadata_version if name == result.metadata_name else None)
-        for name in names
-    ]
-    try:
-        osv_result = osv.check(queries, ecosystem)
-    except Exception as exc:  # osv.check fails closed itself; belt and braces
-        error = f"osv error: {type(exc).__name__}"
-        osv_result = osv.OsvResult("unavailable", [], error)
+    if not idents:
+        osv_result = osv.OsvResult("unavailable", [], _NO_NAME)
+    else:
+        try:
+            osv_result = osv.check(idents, ecosystem)
+        except Exception as exc:  # osv.check fails closed itself; belt and braces
+            error = f"osv error: {type(exc).__name__}"
+            osv_result = osv.OsvResult("unavailable", [], error)
     result.osv_status = osv_result.status
     for finding in osv_result.findings:
         if finding not in result.findings:

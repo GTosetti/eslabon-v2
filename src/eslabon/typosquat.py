@@ -234,26 +234,31 @@ _NAME_THEN_VERSION = re.compile(r"(.+)-[0-9]", re.DOTALL)
 _VERSION_CUT = re.compile(r"-(?=[0-9])")
 
 
-def name_from_filename(
+def identity_from_filename(
     filename: str, kind: str, meta_name: str | None = None
-) -> str | None:
-    """Package name claimed by an archive's FILE name, or None.
+) -> tuple[str, str | None] | None:
+    """(name, version) claimed by an archive's FILE name, or None if no name.
 
-    wheel: the first ``-`` field of ``{name}-{ver}-...whl``. sdist / npm: the
-    archive suffix is stripped and the name ends at the LAST ``-`` followed by a
-    digit (``evil-pkg-6.6.6.tar.gz`` -> ``evil-pkg``). npm pack names a scoped
-    package ``scope-name-ver.tgz``; that is returned as given.
+    wheel: the first two ``-`` fields of ``{name}-{ver}-...whl``. sdist / npm:
+    the archive suffix is stripped and the name ends at the LAST ``-`` followed
+    by a digit (``evil-pkg-6.6.6.tar.gz`` -> ``evil-pkg``, ``6.6.6``); the
+    version is everything after that ``-``. npm pack names a scoped package
+    ``scope-name-ver.tgz``; that name is returned as given.
 
     With ``meta_name`` (the metadata name), a stem that starts with a spelling
     of that name followed by ``-<digit>`` gives that prefix first, so a rebuild
-    suffix (``pyyaml-6.0-1.tar.gz``, ``foo-1.0.0-2.tgz``) is not a mismatch.
+    suffix (``pyyaml-6.0-1.tar.gz`` -> ``pyyaml``, ``6.0-1``) is not a mismatch.
+    The version is None when the file name has an empty one (``pkg-.whl``).
+    Both values are attacker-controlled; callers clean them before display.
     """
     lower = filename.lower()
     if kind == "wheel":
         if not lower.endswith(".whl"):
             return None
-        first, sep, _ = filename[: -len(".whl")].partition("-")
-        return first if first and sep else None
+        first, sep, rest = filename[: -len(".whl")].partition("-")
+        if not (first and sep):
+            return None
+        return first, rest.split("-", 1)[0] or None
     for suffix in _ARCHIVE_SUFFIXES:
         if lower.endswith(suffix):
             stem = filename[: -len(suffix)]
@@ -265,11 +270,20 @@ def name_from_filename(
         for cut in _VERSION_CUT.finditer(stem):
             prefix = stem[: cut.start()]
             if prefix and same_identity(meta_name, prefix, eco):
-                return prefix
+                return prefix, stem[cut.end():] or None
     m = _NAME_THEN_VERSION.match(stem)
     if not m:
         return None
-    return m.group(1)  # greedy: everything before the LAST "-<digit>"
+    # greedy: the name is everything before the LAST "-<digit>"
+    return m.group(1), stem[len(m.group(1)) + 1 :] or None
+
+
+def name_from_filename(
+    filename: str, kind: str, meta_name: str | None = None
+) -> str | None:
+    """The name part of identity_from_filename (see there)."""
+    ident = identity_from_filename(filename, kind, meta_name)
+    return ident[0] if ident else None
 
 
 def same_identity(meta: str, from_file: str, ecosystem: str) -> bool:

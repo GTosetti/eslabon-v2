@@ -307,14 +307,16 @@ def test_offline_skips_and_records_skipped(tmp_path, monkeypatch):
 
 def test_osv_runs_even_when_the_archive_is_broken(tmp_path, monkeypatch):
     """Breaking the archive must not switch the identity rules off; the worse
-    worker status is kept, and the file name is queried without a version."""
+    worker status is kept, and the file name is queried with its own version."""
     rec = Recorder(_load("mal_paypalize.json"))
     code, events = _scan(tmp_path, monkeypatch, rec, b"\x1f\x8bjunk" * 10)
     assert code == 2
     assert [e["rule"]["id"] for e in events if "rule" in e] == ["ESL-006"]
     sc = events[-1]["eslabon"]["scan"]
     assert (sc["status"], sc["osv_status"]) == ("parse_error", "ok")
-    assert rec.calls[0][1] == {"package": {"name": "paypalize", "ecosystem": "npm"}}
+    assert rec.calls[0][1] == {
+        "package": {"name": "paypalize", "ecosystem": "npm"}, "version": "1.0.0",
+    }
 
 
 def test_osv_unavailable_does_not_mask_a_worse_status(tmp_path, monkeypatch):
@@ -335,15 +337,128 @@ def test_filename_name_also_queried_when_it_differs(tmp_path, monkeypatch):
     assert cli.main(["scan", str(target), "--out", str(out)]) == 0
     assert [c[1] for c in rec.calls] == [
         {"package": {"name": "innocent", "ecosystem": "PyPI"}, "version": "2.0"},
-        {"package": {"name": "evilpkg", "ecosystem": "PyPI"}},
+        {"package": {"name": "evilpkg", "ecosystem": "PyPI"}, "version": "2.0"},
     ]
     assert _events(out)[-1]["eslabon"]["scan"]["osv_status"] == "ok"
 
 
-def test_no_name_at_all_records_osv_skipped(tmp_path, monkeypatch):
-    """No metadata and a file name without a version: nothing to ask OSV."""
+def _scan_rec(tmp_path, monkeypatch, data, name, *extra):
+    rec = Recorder(b"{}")
+    eco = [] if name.endswith(".whl") else ["--ecosystem", "pypi" if
+                                          name.endswith(".tar.gz") else "npm"]
+    monkeypatch.setattr(osv, "DEFAULT_OPENER", rec)
+    target = tmp_path / name
+    target.write_bytes(data)
+    out = tmp_path / "out.jsonl"
+    code = cli.main(["scan", str(target), "--out", str(out), *eco, *extra])
+    return code, _events(out), rec
+
+
+def test_chalk_filename_version_used_without_package_json(tmp_path, monkeypatch):
+    """A version-specific MAL record (chalk 5.6.1) must not hit chalk 5.6.2."""
     data = make_tar([TarItem("package/index.js", b"module.exports = 1;\n")])
-    code, events = _scan(tmp_path, monkeypatch, _boom, data, "noversion.tgz")
+    code, events, rec = _scan_rec(tmp_path, monkeypatch, data, "chalk-5.6.2.tgz")
     assert code == 0
+    assert [c[1] for c in rec.calls] == [
+        {"package": {"name": "chalk", "ecosystem": "npm"}, "version": "5.6.2"},
+    ]
+
+
+def test_wheel_filename_version_parsed(tmp_path, monkeypatch):
+    data = make_zip([ZipItem("evilpkg/__init__.py", b"x = 1\n")])
+    code, events, rec = _scan_rec(
+        tmp_path, monkeypatch, data, "evilpkg-3.1-py3-none-any.whl"
+    )
+    assert [c[1] for c in rec.calls] == [
+        {"package": {"name": "evilpkg", "ecosystem": "PyPI"}, "version": "3.1"},
+    ]
+
+
+def test_sdist_rebuild_suffix_queries_the_metadata_version(tmp_path, monkeypatch):
+    data = make_tar([TarItem("pyyaml-6.0/PKG-INFO", b"Name: PyYAML\nVersion: 6.0\n\n")])
+    code, events, rec = _scan_rec(tmp_path, monkeypatch, data, "pyyaml-6.0-1.tar.gz")
+    assert code == 0
+    assert [c[1] for c in rec.calls] == [
+        {"package": {"name": "PyYAML", "ecosystem": "PyPI"}, "version": "6.0"},
+    ]
+
+
+def test_nameless_archive_is_osv_unavailable_exit_2(tmp_path, monkeypatch):
+    """Ambiguous/missing metadata plus a nameless file name must not pass as
+    clean: nothing could be asked, so OSV is unavailable (fail closed)."""
+    data = make_tar([TarItem("payload/setup.cfg", b"[x]\n")])
+    code, events, rec = _scan_rec(tmp_path, monkeypatch, data, "payload.tar.gz")
+    assert code == 2
+    assert rec.calls == []
+    sc = events[-1]["eslabon"]["scan"]
+    assert (sc["status"], sc["osv_status"]) == ("osv_unavailable", "unavailable")
+    assert sc["error"] == "osv: no package name to query"
+
+
+def test_nameless_archive_offline_is_skipped_by_request(tmp_path, monkeypatch):
+    """--offline is the user's explicit opt-out: skipped, exit from other statuses."""
+    data = make_tar([TarItem("payload/setup.cfg", b"[x]\n")])
+    code, events, rec = _scan_rec(
+        tmp_path, monkeypatch, data, "payload.tar.gz", "--offline"
+    )
+    assert code == 0
+    assert rec.calls == []
     sc = events[-1]["eslabon"]["scan"]
     assert (sc["status"], sc["osv_status"]) == ("ok", "skipped")
+
+
+def test_broken_top_list_still_runs_osv(tmp_path, monkeypatch):
+    from eslabon import typosquat
+
+    def broken(name, ecosystem, top=None):
+        raise ValueError("malformed top list")
+
+    monkeypatch.setattr(typosquat, "check", broken)
+    code, events, rec = _scan_rec(
+        tmp_path, monkeypatch, PAYPALIZE, "paypalize-1.0.0.tgz"
+    )
+    assert code == 2
+    assert len(rec.calls) == 1
+    sc = events[-1]["eslabon"]["scan"]
+    assert (sc["status"], sc["osv_status"]) == ("parse_error", "ok")
+
+
+def test_overall_deadline_across_names_and_pages(monkeypatch):
+    now = [1000.0]
+    monkeypatch.setattr(osv, "_clock", lambda: now[0])
+    seen = []
+
+    def slow(url, data, timeout):
+        seen.append(timeout)
+        now[0] += 20
+        return osv.API_URL, b"{}"
+
+    res = osv.check([("a-pkg", "1"), ("b-pkg", "1"), ("c-pkg", "1")], "npm",
+                    opener=slow)
+    assert res.status == "unavailable"
+    assert res.error == "osv deadline exceeded"
+    assert seen == [15, 10]  # the second request only gets what is left
+    assert osv.TOTAL_DEADLINE_S == 30
+
+
+def test_deadline_also_bounds_pagination(monkeypatch):
+    now = [0.0]
+    monkeypatch.setattr(osv, "_clock", lambda: now[0])
+
+    def paged(url, data, timeout):
+        now[0] += 8
+        return osv.API_URL, _load("page1.json")
+
+    assert osv.query_malicious("reqests", "1", "PyPI", opener=paged) == (
+        "unavailable", [],
+    )
+    assert now[0] == 32  # 4 pages, then the deadline, not the 10-page cap
+
+
+def test_real_opener_sends_user_agent():
+    from eslabon import __version__
+
+    req = osv._request(osv.API_URL, b"{}")
+    assert req.get_header("User-agent") == f"eslabon/{__version__}"
+    assert req.get_method() == "POST"
+    assert req.get_header("Content-type") == "application/json"

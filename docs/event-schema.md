@@ -57,9 +57,28 @@ no BOM, and always under 65,536 bytes.
 | `eslabon.scan.files_scanned` / `bytes_read` | integer | Work done. `bytes_read` differs by format: for a zip/wheel it is the decompressed bytes of the members read; for a tar it is the whole decompressed stream (headers, padding and skipped members included) | no |
 | `eslabon.scan.findings` / `anomalies` | integer | Counts. If writing the finding events fails (status downgraded to `parse_error`), `findings` can exceed the finding events actually written | no |
 | `eslabon.scan.anomaly_kinds` | string[] | Sorted unique anomaly kinds | no |
-| `eslabon.scan.osv_status` | string | `ok`, `unavailable`, `skipped` | no |
+| `eslabon.scan.osv_status` | string | `ok`, `unavailable`, `skipped` (see below) | no |
 | `eslabon.scan.duration_ms` | integer | Wall-clock duration | no |
 | `eslabon.scan.error` | string | Only when an error exists. Max 512 chars | yes |
+
+## OSV status (ESL-006)
+
+`osv_status` is `ok` when every identity name was looked up, `unavailable` when any lookup
+failed (network, HTTP, size cap, redirect off `https://api.osv.dev`, bad JSON, the
+10-page cap or the 30 s overall deadline) **or when the archive gave no package name to
+ask about** (no usable metadata and no name in its file name). `unavailable` makes the
+status `osv_unavailable` (exit 2) unless something worse already applies. `skipped` means
+only one thing: the user passed `--offline`. With `--offline` the exit code comes from
+the other statuses alone, even for a nameless archive (the user opted out of the lookup).
+
+Each identity name is queried with its own version: the metadata name with the metadata
+version, a differing file-name name with the version in the file name; no version (all
+advisories for that name) only when none can be parsed.
+
+Limits: for local archives ESL-006 trusts the name and version the archive **declares**.
+A known-bad artifact that is renamed or re-versioned is not matched (the content rules
+ESL-001..004 cover edited artifacts), and a `MAL-` record that lists specific versions
+can be dodged by declaring another version.
 
 ## Scan status
 

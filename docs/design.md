@@ -237,7 +237,10 @@ Without the summary, "zero findings" and "nothing arrived" look identical in the
 it, the generate layer can be measured by counting.
 
 **OSV unavailable** gives `status=osv_unavailable` and exit 2: "clean" must mean fully
-checked. `--offline` skips OSV explicitly and records `osv_status=skipped`.
+checked. An archive with no package name to ask about is `osv_unavailable` too (fail
+closed). `--offline` skips OSV explicitly and records `osv_status=skipped`; that is the
+only way to get `skipped`. ESL-006 trusts the declared name and version: a renamed or
+re-versioned known-bad artifact is left to the content rules (see docs/event-schema.md).
 
 ## 7. Integrations
 
