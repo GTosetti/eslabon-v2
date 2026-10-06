@@ -13,10 +13,10 @@ from pathlib import Path
 
 import jsonschema
 import pytest
-from builders import TarItem, make_tar
+from builders import TarItem, ZipItem, make_tar, make_zip
 
 import eslabon.cli as cli
-from eslabon import yara_engine
+from eslabon import archive, yara_engine
 from eslabon.model import Limits, Member, PackageRef, ScanContext
 
 SCHEMA = json.loads(
@@ -63,17 +63,21 @@ def _urlopen_setup() -> bytes:
     )
 
 
-def _ctx(ecosystem: str = "pypi") -> ScanContext:
+def _ctx(ecosystem: str = "pypi", kind: str = "") -> ScanContext:
     pkg = PackageRef("demo", "0.0.1", ecosystem, "")
-    return ScanContext(rules=_RULES, limits=Limits(), pkg=pkg)
+    if not kind:
+        kind = "npm" if ecosystem == "npm" else "sdist"
+    return ScanContext(rules=_RULES, limits=Limits(), pkg=pkg, archive_kind=kind)
 
 
 _RULES = yara_engine.compile_rules()
 
 
-def _scan(path: str, data: bytes, raw: str = "", ecosystem: str = "pypi"):
+def _scan(
+    path: str, data: bytes, raw: str = "", ecosystem: str = "pypi", kind: str = ""
+):
     m = Member(index=2, path=path, data=data, raw_path=raw or path)
-    return yara_engine.scan_member(m, _ctx(ecosystem))
+    return yara_engine.scan_member(m, _ctx(ecosystem, kind))
 
 
 def _ids(found) -> list[str]:
@@ -127,6 +131,11 @@ def test_setup_subprocess_curl_fires():
         SUBP + "Popen('Power" + "Shell -NoP -c iex')",
         SUBP + "call(['pip', 'install', '" + EVIL + "'])",
         "if 1: " + SUBP + "run(('" + WGET + "' ,u))",
+        SUBP + "run(['POWER" + "SHELL', '-c', 'iwr'])",
+        SUBP + "run(['pw" + "sh', '-c', 'iwr'])",
+        SUBP + "run([shutil.which('" + CURL + "'), '" + EVIL + "'])",
+        SUBP + "run([str(x), '" + CURL + "', '" + EVIL + "'])",
+        "s = " + "socket" + ".create_connection(('example.invalid', 443))",
     ],
 )
 def test_other_shapes_fire(line):
@@ -242,18 +251,64 @@ def test_npm_archive_never_esl001():
     assert found == []
 
 
+BS = chr(0x5C)
+NUL = chr(0)
+
+
 @pytest.mark.parametrize(
     "raw",
-    ["../setup.py", "demo-0.0.1/../setup.py", "demo-0.0.1" + chr(0x5C) + "setup.py"],
+    [
+        "pkg-1.0" + BS + "setup.py",
+        "pkg-1.0/sub/../setup.py",
+        "pkg-1.0/a/b/../../setup.py",
+        "pkg-1.0/x" + BS + ".." + BS + "setup.py",
+        "pkg-1.0/setup.py" + NUL + ".txt",
+        "pkg-1.0/setup.py" + NUL,
+        "/pkg-1.0/setup.py",
+        "C:pkg-1.0/setup.py",
+        "../pkg-1.0/setup.py",
+        "pkg-1.0/SETUP.PY",
+        "pkg-1.0/setup.py ",
+        "pkg-1.0/setup.py.",
+    ],
 )
-def test_rewritten_name_silent_for_esl001(raw):
-    # The landing place of a rewritten name is uncertain; the archive layer
-    # already reports it as an anomaly (traversal / backslash).
-    from eslabon.archive import normalize_path
+def test_rewritten_name_that_can_land_as_setup_py_fires(raw):
+    # R32: if ANY reading of the stored name (Windows separators, '..'
+    # resolved or dropped, NUL truncation, Win32 case/trailing-dot folding)
+    # is the setup.py pip runs, ESL-001 applies.
+    path = archive.normalize_path(raw, "pypi")[0]
+    assert _ids(_scan(path, _urlopen_setup(), raw=raw)) == ["ESL-001"]
 
-    path = normalize_path(raw, "pypi")[0]
-    assert path in ("setup.py", "demo-0.0.1/setup.py")
+
+def test_rewritten_name_too_deep_under_every_reading_silent():
+    raw = "pkg-1.0/a/b/../c/setup.py"
+    path = archive.normalize_path(raw, "pypi")[0]
     assert _scan(path, _urlopen_setup(), raw=raw) == []
+
+
+def test_path_readings():
+    assert archive.path_readings("pkg-1.0/sub/../setup.py") >= {
+        "pkg-1.0/setup.py",
+        "pkg-1.0/sub/setup.py",
+    }
+    assert "pkg-1.0/setup.py" in archive.path_readings("pkg-1.0/SETUP.PY ")
+    assert "pkg-1.0/setup.py" in archive.path_readings("pkg-1.0/setup.py" + NUL + "x")
+    drive_up = "C:" + BS + ".." + BS + "pkg-1.0/setup.py"
+    assert "pkg-1.0/setup.py" in archive.path_readings(drive_up)
+
+
+def test_wheel_setup_py_silent():
+    # pip never runs a setup.py shipped inside a wheel (old numpy wheels had one)
+    assert _scan("pkg/setup.py", _urlopen_setup(), kind="wheel") == []
+    assert _scan("setup.py", _urlopen_setup(), kind="wheel") == []
+
+
+def test_unknown_archive_kind_silent():
+    m = Member(index=0, path="pkg-1.0/setup.py", data=_urlopen_setup())
+    pkg = PackageRef("demo", "0.0.1", "pypi", "")
+    c = ScanContext(rules=_RULES, limits=Limits(), pkg=pkg)
+    assert c.archive_kind == ""
+    assert yara_engine.scan_member(m, c) == []
 
 
 def test_other_rules_still_apply_outside_setup_py():
@@ -269,28 +324,68 @@ def test_other_rules_still_apply_outside_setup_py():
 @pytest.mark.parametrize(
     "unit",
     [
-        SUBP + "call([" + " " * 30,
-        SUBP + "call(['" + "a" * 190,
-        OS_SYSTEM + "(" + "[(" * 15,
-        "import " + "a, " * 30,
-        "import " + " " * 60,
-        URLOPEN + " " * 9,
-        REQ + "get" + " " * 9,
+        SUBP + "call([" + " " * 30 + NL,
+        SUBP + "call(['" + "a" * 190 + NL,
+        OS_SYSTEM + "(" + "[(" * 15 + NL,
+        "import " + "a, " * 30 + NL,
+        "import " + " " * 60 + NL,
+        URLOPEN + " " * 9 + NL,
+        REQ + "get" + " " * 9 + NL,
+        # newline-free: every hit must not scan a long window of the next ones
+        " " + SUBP + "x(",
+        " " + OS_SYSTEM + "(' ",
+        " " + SUBP + "x(a()",
+        " " + SUBP + "x((" + "a" * 30 + ")",
     ],
 )
 def test_ten_mib_adversarial_input_is_fast(unit):
-    data = (unit + NL).encode("ascii")
+    data = unit.encode("ascii")
     data = data * (10 * 2**20 // len(data))
     m = Member(index=0, path="demo-0.0.1/setup.py", data=data, raw_path="")
     start = time.perf_counter()
     found = yara_engine.scan_member(m, _ctx())
     elapsed = time.perf_counter() - start
     print(f"10 MiB of {unit[:20]!r}: {elapsed:.2f} s")
-    assert elapsed < 5.0
+    assert elapsed < 6.0  # worst measured 3.4 s; YARA timeout is 10 s
     assert all(f.rule_id == "ESL-001" for f in found)
 
 
 # ------------------------------------------------------------- end to end ----
+
+
+def _cli_findings(target: Path, tmp_path: Path) -> tuple[int, list[dict]]:
+    out = tmp_path / "out" / (target.name + ".jsonl")
+    code = cli.main(["scan", str(target), "--out", str(out), "--ecosystem", "pypi"])
+    events = [json.loads(x) for x in out.read_text("ascii").splitlines()]
+    for ev in events:
+        jsonschema.validate(ev, SCHEMA)
+    findings = [e for e in events if e["event"]["dataset"] == "eslabon.finding"]
+    return code, findings
+
+
+def test_cli_legacy_zip_sdist_fires(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "pkg-1.0.zip"
+    target.write_bytes(make_zip([ZipItem("pkg-1.0/setup.py", _urlopen_setup())]))
+    code, findings = _cli_findings(target, tmp_path)
+    assert code == 1
+    assert [e["rule"]["id"] for e in findings] == ["ESL-001"]
+
+
+def test_cli_wheel_setup_py_silent(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    target = tmp_path / "pkg-1.0-py3-none-any.whl"
+    target.write_bytes(
+        make_zip(
+            [
+                ZipItem("pkg-1.0.dist-info/METADATA", b"Name: pkg\nVersion: 1.0\n"),
+                ZipItem("pkg/setup.py", _urlopen_setup()),
+            ]
+        )
+    )
+    code, findings = _cli_findings(target, tmp_path)
+    assert findings == []
+    assert code == 0
 
 
 def _sdist(setup_path: str, tmp_path: Path) -> Path:

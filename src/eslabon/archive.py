@@ -12,6 +12,7 @@ import copy
 import io
 import lzma
 import os
+import posixpath
 import re
 import stat
 import struct
@@ -74,6 +75,36 @@ def is_rewritten(raw: str, ecosystem: str) -> bool:
     if chr(0x5C) in raw or chr(0) in raw:  # NUL: truncated by some readers
         return True
     return bool(normalize_path(raw, ecosystem)[1])
+
+
+def _win32_fold(path: str) -> str:
+    """How Windows would resolve ``path``: case-insensitive, and trailing dots
+    and spaces of every component ignored."""
+    return "/".join(c.rstrip(". ").lower() for c in path.split("/"))
+
+
+def path_readings(raw: str) -> set[str]:
+    """Every relative path an installer on some OS could write ``raw`` to.
+
+    Computed for ``raw`` and for ``raw`` cut at its first NUL: (a) our own
+    normalisation ('..' dropped); (b) backslash read as '/', drive and leading
+    '/' stripped, '..' resolved by posixpath.normpath, leading '..' dropped;
+    plus the Win32-folded variant of each. Used wherever a rule depends on a
+    member's exact landing place (metadata files, the setup.py pip runs).
+    """
+    out: set[str] = set()
+    for r in {raw, raw.split(chr(0), 1)[0]}:
+        p = r.replace(chr(0x5C), "/")
+        if _DRIVE.match(p):
+            p = p[2:]
+        p = p.lstrip("/")
+        parts = posixpath.normpath(p).split("/") if p else []
+        while parts and parts[0] == "..":
+            parts.pop(0)
+        for reading in (normalize_path(r, "pypi")[0], "/".join(parts)):
+            out.add(reading)
+            out.add(_win32_fold(reading))
+    return out
 
 
 class _CountingReader:

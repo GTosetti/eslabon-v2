@@ -13,7 +13,7 @@ from importlib import resources
 
 import yara
 
-from eslabon.archive import is_rewritten
+from eslabon.archive import path_readings
 from eslabon.model import Finding, LimitsExceeded, Member, ParseError, ScanContext
 from eslabon.sanitize import clean_text, to_hex
 
@@ -32,12 +32,12 @@ def _leading_space(matched: bytes) -> int:
 
 
 def is_install_setup_py(m: Member, ctx: ScanContext) -> bool:
-    """True for the setup.py pip would run: a PyPI archive, normalised path
-    ``setup.py`` or ``<top dir>/setup.py``, and a name that normalisation did
-    not rewrite (no traversal, absolute path, backslash or NUL)."""
-    if ctx.pkg.ecosystem != "pypi" or not _SETUP_PY.fullmatch(m.path):
+    """True if ``m`` may be the setup.py pip runs: a PyPI sdist, and ANY
+    reading of the stored name (``archive.path_readings``) is ``setup.py`` or
+    ``<top dir>/setup.py``. A wheel's setup.py is never run by pip."""
+    if ctx.pkg.ecosystem != "pypi" or ctx.archive_kind != "sdist":
         return False
-    return not is_rewritten(m.raw_path or m.path, "pypi")
+    return any(_SETUP_PY.fullmatch(r) for r in path_readings(m.raw_path or m.path))
 
 
 def compile_rules() -> yara.Rules:

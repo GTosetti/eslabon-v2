@@ -15,7 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from eslabon import yara_engine
-from eslabon.archive import TarStats, is_rewritten, iter_members, normalize_path
+from eslabon.archive import TarStats, is_rewritten, iter_members, path_readings
 from eslabon.model import (
     Anomaly,
     Finding,
@@ -163,12 +163,7 @@ class _MetadataPicker:
             else:
                 self.mode = "wheel" if archive_kind == "zip" else "sdist"
         if rewritten:
-            as_slash = raw.replace(chr(0x5C), "/")
-            readings = (
-                posixpath.normpath(as_slash).lstrip("/").split("/"),
-                normalize_path(raw, "pypi")[0].split("/"),  # '..' dropped, no strip
-            )
-            if any(self._wanted(r) for r in readings):
+            if any(self._wanted(r.split("/")) for r in path_readings(raw)):
                 self.suspect = True
             return
         parts = posixpath.normpath(raw).split("/")
@@ -190,6 +185,14 @@ class _MetadataPicker:
         return self.candidates[0] if self.candidates else None
 
 
+def archive_kind(path: Path, ecosystem: str) -> str:
+    """"npm", "wheel" (a .whl file) or "sdist" (any other PyPI archive,
+    legacy .zip sdists included)."""
+    if ecosystem == "npm":
+        return "npm"
+    return "wheel" if path.suffix.lower() == ".whl" else "sdist"
+
+
 def analyze_archive(path: Path, pkg: PackageRef, limits: Limits) -> ScanResult:
     """Read every member once, run ANALYZERS and collect metadata.
 
@@ -198,7 +201,9 @@ def analyze_archive(path: Path, pkg: PackageRef, limits: Limits) -> ScanResult:
     installers and OSes. Duplicates are flagged by the ``duplicate_name`` anomaly.
     """
     eco = pkg.ecosystem
-    ctx = ScanContext(rules=_get_rules(), limits=limits, pkg=pkg)
+    ctx = ScanContext(
+        rules=_get_rules(), limits=limits, pkg=pkg, archive_kind=archive_kind(path, eco)
+    )
     anomalies: list[Anomaly] = []
     findings: list[Finding] = []
     stats = TarStats()

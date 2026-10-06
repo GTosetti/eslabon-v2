@@ -69,6 +69,8 @@ class ScanContext:
     rules: yara.Rules | None  # None until the rule set exists (Task 9)
     limits: Limits
     pkg: PackageRef
+    # "sdist" | "wheel" | "npm"; "" when unknown (rules scoped to a kind stay off)
+    archive_kind: str = ""
 
 
 @dataclass
