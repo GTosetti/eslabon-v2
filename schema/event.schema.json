@@ -64,15 +64,6 @@
       "required": ["name"],
       "properties": {"name": {"type": "string"}, "version": {"type": "string"}}
     },
-    "file": {
-      "type": "object",
-      "properties": {
-        "hash": {
-          "type": "object",
-          "properties": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
-        }
-      }
-    },
     "eslabon": {
       "type": "object",
       "required": ["schema_version", "ecosystem"],
@@ -82,6 +73,12 @@
         "ecosystem": {"enum": ["pypi", "npm"]},
         "scan_id": {"type": "string"},
         "identity_source": {"enum": ["metadata", "filename", "argument"]},
+        "archive": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sha256"],
+          "properties": {"sha256": {"type": "string", "pattern": "^[0-9a-f]{64}$"}}
+        },
         "evidence": {
           "type": "object",
           "additionalProperties": false,
@@ -124,6 +121,8 @@
       }
     }
   },
+  "$comment": "No top-level file: Wazuh 4.14 maps data.file as keyword (R54).",
+  "not": {"required": ["file"]},
   "allOf": [
     {
       "if": {

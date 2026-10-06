@@ -624,7 +624,8 @@ def test_cli_name_version_pypi_end_to_end(out, monkeypatch, track):
     assert _main("requests==2.32.3", out, "--ecosystem", "pypi", "--offline") == 0
     s = _summary(out)
     assert s["package"] == {"name": "requests", "version": "2.32.3"}
-    assert s["file"]["hash"]["sha256"] == _sha256(SDIST)
+    assert s["eslabon"]["archive"]["sha256"] == _sha256(SDIST)
+    assert "file" not in s
     assert s["eslabon"]["identity_source"] == "argument"
     assert s["eslabon"]["scan"]["status"] == "ok"
     assert s["eslabon"]["scan"]["files_scanned"] == 2
@@ -684,7 +685,7 @@ def test_hash_mismatch_exit_2(out, monkeypatch, track, capsys):
     assert _main("requests==2.32.3", out, "--ecosystem", "pypi", "--offline") == 2
     s = _summary(out)
     assert s["eslabon"]["scan"]["status"] == "hash_mismatch"
-    assert s["file"]["hash"]["sha256"] == _sha256(SDIST)  # what we actually got
+    assert s["eslabon"]["archive"]["sha256"] == _sha256(SDIST)  # what we actually got
     assert s["package"] == {"name": "requests", "version": "2.32.3"}
     assert s["eslabon"]["identity_source"] == "argument"
     assert capsys.readouterr().err == ""
@@ -718,7 +719,7 @@ def test_cli_download_over_cap_limits_exceeded(out, monkeypatch, track):
     assert _main("requests==2.32.3", out, "--ecosystem", "pypi", "--offline") == 2
     s = _summary(out)
     assert s["eslabon"]["scan"]["status"] == "limits_exceeded"
-    assert "file" not in s
+    assert "file" not in s and "archive" not in s["eslabon"]
     _assert_cleaned(track, out.parent.parent)
 
 

@@ -124,7 +124,8 @@ def test_scan_clean_archive_exit_0_and_summary_valid(dirs, capsys):
     assert sc["osv_status"] == "ok"
     import hashlib
 
-    assert s["file"]["hash"]["sha256"] == hashlib.sha256(CLEAN_TGZ).hexdigest()
+    assert s["eslabon"]["archive"]["sha256"] == hashlib.sha256(CLEAN_TGZ).hexdigest()
+    assert "file" not in s
     assert capsys.readouterr().err == ""
 
 
@@ -331,7 +332,8 @@ def test_local_archive_over_max_download_refused_before_open(dirs, monkeypatch):
     assert _run(target, dirs[1], "--ecosystem", "npm") == 2
     s = _summary(_events(dirs[1]))
     assert s["eslabon"]["scan"]["status"] == "limits_exceeded"
-    assert "file" not in s  # archive never opened, so no hash
+    assert "file" not in s
+    assert "archive" not in s["eslabon"]  # archive never opened, so no hash
 
 
 # ------------------------------------------------------------- metadata ----

@@ -8,7 +8,13 @@ import jsonschema
 import pytest
 
 from eslabon.catalog import load_catalog
-from eslabon.emit import SCHEMA_VERSION, finding_event, summary_event, write_events
+from eslabon.emit import (
+    MAX_LINE_BYTES,
+    SCHEMA_VERSION,
+    finding_event,
+    summary_event,
+    write_events,
+)
 from eslabon.model import Anomaly, Finding, PackageRef, ScanResult
 
 SCHEMA = json.loads(
@@ -54,17 +60,40 @@ def test_finding_event_validates():
     assert ev["event"]["severity"] == RULE.severity
     assert ev["rule"]["version"]
     assert ev["threat"]["technique"]["id"] == RULE.techniques
-    assert ev["file"]["hash"]["sha256"] == "ab" * 32
+    assert ev["eslabon"]["archive"] == {"sha256": "ab" * 32}
+    assert "file" not in ev
     assert ev["eslabon"]["schema_version"] == SCHEMA_VERSION == "1.0"
     assert ev["eslabon"]["evidence"]["file"] == "setup.py"
     assert ev["eslabon"]["mitigation"]["action"] == RULE.action
 
 
-def test_finding_without_hash_omits_file():
+def test_finding_without_hash_omits_archive():
     pkg = PackageRef("a", "1", "npm", "")
     ev = finding_event(_finding(), RULE, pkg, "s", NOW)
     assert "file" not in ev
+    assert "archive" not in ev["eslabon"]
     _validate(ev)
+
+
+@pytest.mark.parametrize("sha", ["ab" * 32, ""])
+def test_no_event_has_top_level_file_key(sha):
+    # R54: Wazuh 4.14's wazuh-alerts template maps data.file as keyword, so an
+    # object under "file" makes OpenSearch reject the whole alert.
+    pkg = PackageRef("a", "1", "pypi", sha)
+    r = ScanResult("ok", [_finding()], [Anomaly("traversal", "00", "d")])
+    for ev in (finding_event(_finding(), RULE, pkg, "s", NOW),
+               summary_event(r, pkg, "s", NOW)):
+        _validate(ev)
+        assert "file" not in ev
+        if sha:
+            assert ev["eslabon"]["archive"] == {"sha256": sha}
+        else:
+            assert "archive" not in ev["eslabon"]
+
+
+def test_max_line_bytes_fits_wazuh_logcollector():
+    # R54: logcollector delivers at most 65,278 bytes plus newline
+    assert MAX_LINE_BYTES == 65_000
 
 
 def test_unknown_package_name():
@@ -105,7 +134,7 @@ def test_every_line_under_64k(tmp_path):
     f = _finding(snippet="A" * (10 * 2**20))
     out = tmp_path / "e.jsonl"
     write_events([finding_event(f, RULE, PKG, "s", NOW)], out)
-    assert out.stat().st_size < 65536
+    assert out.stat().st_size < MAX_LINE_BYTES
 
 
 def test_megabyte_path_capped(tmp_path):
@@ -117,12 +146,22 @@ def test_megabyte_path_capped(tmp_path):
     out = tmp_path / "e.jsonl"
     write_events([ev, summary_event(r, PKG, "s", NOW)], out)
     for line in out.read_bytes().split(b"\n")[:-1]:
-        assert len(line) < 65536
+        assert len(line) < MAX_LINE_BYTES
 
 
 def test_oversize_line_raises(tmp_path):
     with pytest.raises(ValueError):
         write_events([{"x": "y" * 70000}], tmp_path / "e.jsonl")
+
+
+def test_line_limit_is_exact(tmp_path):
+    # '{"x":"' + payload + '"}' is len(payload) + 8 bytes
+    out = tmp_path / "e.jsonl"
+    assert write_events([{"x": "y" * (MAX_LINE_BYTES - 9)}], out) == 1
+    assert len(out.read_bytes()) == MAX_LINE_BYTES  # line + LF
+    with pytest.raises(ValueError):
+        write_events([{"x": "y" * (MAX_LINE_BYTES - 8)}], tmp_path / "f.jsonl")
+    assert not (tmp_path / "f.jsonl").exists()
 
 
 def test_no_bom_and_lf_only(tmp_path):
@@ -208,6 +247,10 @@ FINDING_MUTATIONS = {
     "evidence_typo_key": _set(["eslabon", "evidence", "snipet"], "x"),
     "bad_category": _set(["event", "category"], ["package", "other"]),
     "bad_type": _set(["event", "type"], ["start"]),
+    "legacy_file_hash": _set(["file"], {"hash": {"sha256": "ab" * 32}}),
+    "archive_bad_sha": _set(["eslabon", "archive", "sha256"], "AB" * 32),
+    "archive_short_sha": _set(["eslabon", "archive", "sha256"], "ab"),
+    "archive_typo_key": _set(["eslabon", "archive", "sha265"], "ab" * 32),
 }
 
 
@@ -259,4 +302,4 @@ def test_worst_case_non_bmp_expansion(tmp_path):
         [finding_event(f, RULE, pkg, "s", NOW), summary_event(r, pkg, "s", NOW)], out
     )
     for line in out.read_bytes().split(b"\n")[:-1]:
-        assert len(line) < 65536
+        assert len(line) < MAX_LINE_BYTES

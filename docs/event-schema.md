@@ -7,7 +7,22 @@ ECS reference: **9.5.0**, the latest release of elastic/ecs, published 2026-08-0
 Source: GitHub API `repos/elastic/ecs/releases/latest`, checked 2026-10-05. ATT&CK data: v19.2.
 
 Every line of the output file is one JSON object, ASCII only (`ensure_ascii`), LF-terminated,
-no BOM, and always under 65,536 bytes.
+no BOM, and always under 65,000 bytes (`MAX_LINE_BYTES`, newline excluded). The limit is
+set by Wazuh 4.14's logcollector, not by JSON: its `read_json` reads each line with
+`fgets` into `OS_MAXSTR - OS_LOG_HEADER` bytes, so at most 65,278 bytes plus the newline
+arrive. Measured in the E7 lab: a 65,300-byte line was dropped silently and the line
+after it was lost as well. The emitter raises `ValueError` instead of writing a line at
+or over the limit.
+
+## Deviation from ECS: no `file.*`
+
+ECS puts an artifact's hash in `file.hash.sha256`. Eslabon does **not**: the archive
+hash is `eslabon.archive.sha256`, and no event has a top-level `file` key (the schema
+rejects one). Reason, measured in the E7 lab: Wazuh 4.14's `wazuh-alerts` index
+template maps `data.file` as a `keyword`, and a decoded JSON event lands under `data.`,
+so an object at `file` makes OpenSearch reject the **whole** alert (filebeat
+`mapper_parsing_exception` 14 times, 0 alerts indexed). Every other ECS field
+Eslabon uses is unaffected.
 
 ## Event kinds
 
@@ -41,11 +56,11 @@ no BOM, and always under 65,536 bytes.
 | `threat.tactic.id` / `.name` | string[] | Findings only: tactic IDs and names | no |
 | `package.name` | string | Name from metadata or the request; `unknown` if absent. Max 512 chars. For a local archive it is read from inside it (see below) | yes |
 | `package.version` | string | Version, same origin. Max 512 chars | yes |
-| `file.hash.sha256` | string | SHA-256 of the **archive** (omitted if unknown) | no |
 | `eslabon.schema_version` | string | `1.0` | no |
 | `eslabon.attack_version` | string | `19.2` | no |
 | `eslabon.ecosystem` | string | `pypi` or `npm` | no |
 | `eslabon.scan_id` | string | Identifier shared by all events of one scan | no |
+| `eslabon.archive.sha256` | string | SHA-256 of the **archive**, lowercase hex. The whole `eslabon.archive` object is omitted when the hash is unknown (archive never opened) | no |
 | `eslabon.identity_source` | string | Summary only, **optional**: where the package name checked by ESL-005 came from: `metadata`, `filename` (metadata missing or ambiguous, so the archive's file name was used) or `argument` (a `name==version` target). Absent when no name was available | no |
 | `eslabon.evidence.file` | string | Findings only: the **inner** file that matched (package-level rules: the checked name for ESL-005, `<osv>` for ESL-006). Max 512 chars | yes |
 | `eslabon.evidence.line` | integer | Findings only: line number of the match | no |
@@ -175,7 +190,9 @@ is removed. Adding an optional field does not require a bump.
 
 - Wazuh turns every value into a string; do not rely on numeric types in rules.
 - Arrays contain strings only (the JSON decoder does not support arrays of objects).
-- Keep each line under 64 KB; the emitter raises `ValueError` rather than write a longer one.
-- `file.*` describes the archive; `eslabon.evidence.file` is the file inside it.
+- Keep each line under 65,000 bytes (see the top of this document); the emitter raises
+  `ValueError` rather than write a longer one.
+- `eslabon.archive.*` describes the archive; `eslabon.evidence.file` is the file inside it.
+  Never add a top-level `file` object (see "Deviation from ECS").
 - Lone surrogates from tar names are escaped as `\udXXX` by the ASCII JSON encoding, so the
   line stays valid JSON.

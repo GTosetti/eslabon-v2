@@ -132,7 +132,7 @@ class HashMismatch(Exception):
     """The downloaded bytes do not match the registry's published hash.
 
     ``actual_sha256`` is the SHA-256 of what was actually received (for the
-    summary's file.hash), "" if unknown.
+    summary's eslabon.archive.sha256), "" if unknown.
     """
 
     def __init__(self, message: str, actual_sha256: str = "") -> None:

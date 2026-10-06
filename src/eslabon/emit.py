@@ -16,7 +16,10 @@ from eslabon.sanitize import clean_text
 ECS_VERSION = "9.5.0"
 SCHEMA_VERSION = "1.0"
 ATTACK_VERSION = "19.2"
-MAX_LINE_BYTES = 65_536
+# Wazuh 4.14 logcollector (read_json: fgets of OS_MAXSTR - OS_LOG_HEADER) delivers
+# at most 65,278 bytes plus the newline. In the E7 lab a 65,300-byte line was
+# dropped silently and the line after it was lost too, so stay well below that.
+MAX_LINE_BYTES = 65_000
 _PATH_CAP = 512
 _HEX_CAP = 1024
 
@@ -44,14 +47,16 @@ def _envelope(
             "version": clean_text(pkg.version, _PATH_CAP) if pkg.version else "",
         },
     }
-    if pkg.archive_sha256:
-        ev["file"] = {"hash": {"sha256": pkg.archive_sha256}}
     ev["eslabon"] = {
         "schema_version": SCHEMA_VERSION,
         "attack_version": ATTACK_VERSION,
         "ecosystem": pkg.ecosystem,
         "scan_id": scan_id,
     }
+    # Not ECS file.hash.sha256: Wazuh 4.14's wazuh-alerts template maps data.file
+    # as keyword, so any object under "file" gets the whole alert rejected (R54).
+    if pkg.archive_sha256:
+        ev["eslabon"]["archive"] = {"sha256": pkg.archive_sha256}
     return ev
 
 
@@ -110,7 +115,7 @@ def write_events(events: Iterable[dict], out: Path) -> int:
     for ev in events:
         line = json.dumps(ev, ensure_ascii=True, separators=(",", ":"))
         if len(line.encode("ascii")) >= MAX_LINE_BYTES:
-            raise ValueError("event line exceeds 64 KB")
+            raise ValueError(f"event line is not under {MAX_LINE_BYTES} bytes")
         lines.append(line)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("a", encoding="utf-8", newline="\n") as fh:
