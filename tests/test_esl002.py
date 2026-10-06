@@ -482,7 +482,7 @@ def test_not_npm_silent(kind):
 def test_esl002_not_in_member_rules():
     # esl002 matches any URL; it only runs on script strings, never on members.
     rules = yara_engine.compile_rules()
-    assert {r.identifier.split("_")[0] for r in rules} == {"esl001", "esl003"}
+    assert {r.identifier.split("_")[0] for r in rules} == {"esl001", "esl003", "esl004"}
     script_rules = yara_engine.compile_script_rules()
     assert {r.identifier.split("_")[0] for r in script_rules} == {"esl002"}
     assert all(r.meta["esl_id"] == "ESL-002" for r in script_rules)

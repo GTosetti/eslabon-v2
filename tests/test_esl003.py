@@ -174,7 +174,7 @@ def test_rules_compile_with_error_on_warning():
         assert r.meta.get("esl_id", "").startswith("ESL-")
     rule_dir = Path(yara_engine.__file__).parent / "rules"
     files = sorted(rule_dir.glob("*.yar"))
-    assert [p.stem for p in files] == ["esl001", "esl002", "esl003"]
+    assert [p.stem for p in files] == ["esl001", "esl002", "esl003", "esl004"]
     for p in files:
         yara.compile(filepath=str(p), error_on_warning=True)
         assert p.read_bytes().isascii()
@@ -319,7 +319,8 @@ def test_repo_files_do_not_trip_the_rules():
             if path.stat().st_size > 10 * 2**20:
                 continue
             data = path.read_bytes()
-            if rules.match(data=data):
+            # the same post-filter the engine applies (ESL-004 public-IP check)
+            if any(yara_engine.counted_offsets(x) for x in rules.match(data=data)):
                 hits.append(path.relative_to(root).as_posix())
             if name == "package.json":
                 m = Member(0, "package.json", data, "package/package.json")

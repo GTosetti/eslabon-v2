@@ -8,6 +8,7 @@ are only matched against, never decoded beyond the sanitised snippet.
 
 from __future__ import annotations
 
+import ipaddress
 import re
 from importlib import resources
 
@@ -25,6 +26,15 @@ _SETUP_PY_ONLY = frozenset({"esl001"})
 # npm_scripts): esl002 fires on any URL, so it must never run over a member.
 _SCRIPT_ONLY = frozenset({"esl002"})
 _SETUP_PY = re.compile(r"(?:[^/]+/)?setup\.py")
+# ESL-004: the IP-literal sink only nominates. An instance counts only if the
+# address is global; a match whose sinks are all dropped is no finding.
+_IP_FILTERED = {"esl004": "$sink_ip"}
+_SINK_PREFIX = "$sink"
+# YARA stops recording a string after this many instances. A capped IP string
+# may hide a public address past the cap, so it is kept unfiltered.
+_YARA_MATCH_CAP = 1_000_000
+_IPV4 = re.compile(rb"(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})")
+_OCTAL = re.compile(r"0[0-7]*")
 
 
 def _leading_space(matched: bytes) -> int:
@@ -41,6 +51,35 @@ def is_install_setup_py(m: Member, ctx: ScanContext) -> bool:
     if ctx.pkg.ecosystem != "pypi" or ctx.archive_kind != "sdist":
         return False
     return any(_SETUP_PY.fullmatch(r) for r in path_readings(m.raw_path or m.path))
+
+
+def _octet_readings(octet: str) -> set[int]:
+    """Values a URL host octet may take: decimal, and the octal reading
+    inet_aton gives a leading zero (0127 is 87). Out-of-range values stay in
+    and make the address invalid."""
+    values = {int(octet, 10)}
+    if len(octet) > 1 and _OCTAL.fullmatch(octet):
+        values.add(int(octet, 8))
+    return values
+
+
+def is_public_ipv4_url(matched: bytes) -> bool:
+    """True if the IPv4 literal in an ``http(s)://a.b.c.d`` match is a global
+    address under ANY plausible reading of its octets (when in doubt, keep
+    the sink). Loopback, private, link-local, CGNAT, documentation and
+    reserved addresses are not sinks; nor is an octet above 255."""
+    found = _IPV4.search(matched)
+    if found is None:
+        return False
+    readings: list[list[int]] = [[]]
+    for octet in found.groups():
+        readings = [r + [v] for r in readings for v in _octet_readings(octet.decode())]
+    for octets in readings:
+        if any(v > 255 for v in octets):
+            continue
+        if ipaddress.IPv4Address(bytes(octets)).is_global:
+            return True
+    return False
 
 
 def _compile(script_rules: bool) -> yara.Rules:
@@ -68,6 +107,33 @@ def compile_script_rules() -> yara.Rules:
     return _compile(script_rules=True)
 
 
+def counted_offsets(match: yara.Match) -> list[int]:
+    """Offsets of the instances of ``match`` that count (empty: no finding).
+
+    For the ESL-004 namespace an IP-literal sink instance counts only if the
+    address is public, and the match is void when no sink instance is left.
+    Every other namespace counts every instance as matched."""
+    ip_string = _IP_FILTERED.get(match.namespace)
+    offsets: list[int] = []
+    sinks = 0
+    verdicts: dict[bytes, bool] = {}  # dense repeats of one IP parse once
+    for s in match.strings:
+        keep_all = s.identifier != ip_string or len(s.instances) >= _YARA_MATCH_CAP
+        for inst in s.instances:
+            hit = inst.matched_data
+            if not keep_all:
+                if hit not in verdicts:
+                    verdicts[hit] = is_public_ipv4_url(hit)
+                if not verdicts[hit]:
+                    continue
+            if s.identifier.startswith(_SINK_PREFIX):
+                sinks += 1
+            offsets.append(inst.offset + _leading_space(hit))
+    if ip_string is not None and sinks == 0:
+        return []  # every sink was a non-public IP: no exfiltration target
+    return offsets
+
+
 def scan_member(m: Member, ctx: ScanContext) -> list[Finding]:
     """One Finding per matched esl_id: lowest offset, total instance count."""
     if ctx.rules is None or not m.data:
@@ -90,11 +156,9 @@ def scan_member(m: Member, ctx: ScanContext) -> list[Finding]:
             if not setup_py:
                 continue
         esl_id = match.meta["esl_id"]
-        for s in match.strings:
-            for inst in s.instances:
-                off = inst.offset + _leading_space(inst.matched_data)
-                first, count = merged.get(esl_id, (off, 0))
-                merged[esl_id] = (min(first, off), count + 1)
+        for off in counted_offsets(match):
+            first, count = merged.get(esl_id, (off, 0))
+            merged[esl_id] = (min(first, off), count + 1)
 
     data = m.data
     name_hex = to_hex(m.raw_path or m.path)
