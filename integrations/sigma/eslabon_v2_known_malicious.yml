@@ -1,0 +1,30 @@
+title: Known-malicious package (Eslabon ESL-006)
+id: f9ae885f-ae92-4240-89f8-f8bc7cc16efb
+status: experimental
+description: |
+    Eslabon v2 scanned a PyPI or npm package whose declared name and version
+    have an OSV MAL (malicious package) advisory. ESL-006 trusts the declared
+    identity; a renamed or re-versioned known-bad artifact is left to the
+    content rules ESL-001..004.
+author: Eslabon project
+date: 2026/10/06
+references:
+    - https://osv.dev/
+    - https://attack.mitre.org/techniques/T1195/001/
+    - https://github.com/wazuh/wazuh/issues/17568
+tags:
+    - attack.initial_access
+    - attack.t1195.001
+logsource:
+    product: eslabon
+    category: package_scan
+detection:
+    selection:
+        event.module: eslabon
+        event.dataset: eslabon.finding
+        rule.id: ESL-006
+    condition: selection
+falsepositives:
+    - A security researcher deliberately scanning a known-malicious sample
+    - An OSV MAL record that is later withdrawn (Eslabon drops withdrawn ones)
+level: high
