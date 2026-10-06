@@ -312,9 +312,9 @@ non-empty English text, each ≤ 300 characters. The residual gaps listed in §5
   under the normalised name.
 - Symlinks and hardlinks are never read. They become an anomaly (`link_skipped`) and count
   toward `max_members`.
-- Duplicate names: the later one wins, and an anomaly (`duplicate_name`) is recorded.
-  Because streaming yields in order, buffer only `name → last index`, scan every copy, and
-  in Task 8 drop the findings whose `member_index` is not the last index for that name.
+- Duplicate names: an anomaly (`duplicate_name`) is recorded and every copy is yielded.
+  (Superseded by ruling R29 during execution: there is NO last-copy-wins; every copy is
+  scanned and every copy's findings are reported. See docs/event-schema.md.)
 
 - [ ] **Step 1:** Write the failing tests. Each one runs inside `tmp_path`, `chdir`s there,
   and finally asserts that `os.listdir(tmp_path)` contains only the input archive (no disk
@@ -473,7 +473,7 @@ non-empty English text, each ≤ 300 characters. The residual gaps listed in §5
   - In this task it only reads members and counts them. Analysers are plugged in from
     Task 9 onwards through a module-level list
     `ANALYZERS: list[Callable[[Member, ScanContext], list[Finding]]]`.
-  - It applies the last-copy-wins rule for duplicates.
+  - It reports the findings of every copy of a duplicate name (ruling R29; no suppression).
   - It maps `LimitsExceeded` to `limits_exceeded` and `ParseError` to `parse_error`.
 - `read_metadata(path: Path, ecosystem: str, limits: Limits) -> tuple[str | None, str | None]`
   reads the name and version of a local archive from inside it (see `PackageRef` in the
@@ -493,7 +493,7 @@ non-empty English text, each ≤ 300 characters. The residual gaps listed in §5
   - `test_missing_file_exit_2_one_line_stderr_no_traceback` (Review Focus 5).
   - `test_unknown_extension_without_ecosystem_exit_2`
   - `test_two_scans_append_to_same_out` (Review Focus 4).
-  - `test_duplicate_member_only_last_copy_reported`
+  - `test_duplicate_member_every_copy_reported`
   - `test_local_archive_over_max_download_refused_before_open`
   - `test_local_metadata_read_or_no_metadata_anomaly`
 - [ ] **Step 2:** Run the tests and expect a FAIL. **Step 3:** Implement. **Step 4:** Run
