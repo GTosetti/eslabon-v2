@@ -14,7 +14,7 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
-from eslabon import yara_engine
+from eslabon import npm_scripts, yara_engine
 from eslabon.archive import TarStats, is_rewritten, iter_members, path_readings
 from eslabon.model import (
     Anomaly,
@@ -48,6 +48,7 @@ INCOMPLETE_KINDS = frozenset(
 # spawned worker re-imports this module and never sees runtime registration.
 ANALYZERS: list[Callable[[Member, ScanContext], list[Finding]]] = [
     yara_engine.scan_member,
+    npm_scripts.scan_package_json,
 ]
 
 _META_HEADER_CAP = 64 * 2**10  # RFC 822 headers live at the top; never scan more
@@ -201,10 +202,14 @@ def analyze_archive(path: Path, pkg: PackageRef, limits: Limits) -> ScanResult:
     installers and OSes. Duplicates are flagged by the ``duplicate_name`` anomaly.
     """
     eco = pkg.ecosystem
-    ctx = ScanContext(
-        rules=_get_rules(), limits=limits, pkg=pkg, archive_kind=archive_kind(path, eco)
-    )
     anomalies: list[Anomaly] = []
+    ctx = ScanContext(
+        rules=_get_rules(),
+        limits=limits,
+        pkg=pkg,
+        archive_kind=archive_kind(path, eco),
+        anomalies=anomalies,
+    )
     findings: list[Finding] = []
     stats = TarStats()
     picker = _MetadataPicker(eco)

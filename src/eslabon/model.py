@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -35,7 +35,9 @@ class Member:
 # no_metadata, ambiguous_metadata, special_member (tar fifo/chr/blk: no content),
 # overlapped_entry (zip entries sharing a local header; still scanned),
 # dir_with_content (zip entry that looks like a directory but carries data or whose
-# stored and host-mapped names disagree; read and scanned as a regular member).
+# stored and host-mapped names disagree; read and scanned as a regular member),
+# bad_package_json (an npm package.json that is not a UTF-8 JSON object; npm
+# would refuse it, so ESL-002 records nothing for it).
 # Only encrypted_member, unsupported_compression and bad_member mean "content not
 # scanned" and make the scan status "incomplete".
 @dataclass(frozen=True)
@@ -71,6 +73,9 @@ class ScanContext:
     pkg: PackageRef
     # "sdist" | "wheel" | "npm"; "" when unknown (rules scoped to a kind stay off)
     archive_kind: str = ""
+    # Analysers append member-level anomalies here (e.g. bad_package_json);
+    # scan.analyze_archive passes its own list.
+    anomalies: list[Anomaly] = field(default_factory=list)
 
 
 @dataclass

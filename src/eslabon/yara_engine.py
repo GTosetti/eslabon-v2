@@ -21,6 +21,9 @@ _BEFORE = 120  # snippet context before the first match
 _AFTER = 200  # and after it
 # Namespaces whose matches only count in the setup.py pip runs (ESL-001).
 _SETUP_PY_ONLY = frozenset({"esl001"})
+# Namespaces matched only against npm lifecycle script strings (ESL-002, in
+# npm_scripts): esl002 fires on any URL, so it must never run over a member.
+_SCRIPT_ONLY = frozenset({"esl002"})
 _SETUP_PY = re.compile(r"(?:[^/]+/)?setup\.py")
 
 
@@ -40,14 +43,29 @@ def is_install_setup_py(m: Member, ctx: ScanContext) -> bool:
     return any(_SETUP_PY.fullmatch(r) for r in path_readings(m.raw_path or m.path))
 
 
-def compile_rules() -> yara.Rules:
-    """Compile every bundled ``rules/*.yar``; a YARA warning is an error."""
+def _compile(script_rules: bool) -> yara.Rules:
     root = resources.files("eslabon").joinpath("rules")
     with resources.as_file(root) as rule_dir:
-        paths = {p.stem: str(p) for p in sorted(rule_dir.glob("*.yar"))}
+        paths = {
+            p.stem: str(p)
+            for p in sorted(rule_dir.glob("*.yar"))
+            if (p.stem in _SCRIPT_ONLY) == script_rules
+        }
         if not paths:
             raise RuntimeError("no YARA rules bundled")
         return yara.compile(filepaths=paths, error_on_warning=True)
+
+
+def compile_rules() -> yara.Rules:
+    """Compile the bundled ``rules/*.yar`` that run on archive members (every
+    file except the script-only namespaces); a YARA warning is an error."""
+    return _compile(script_rules=False)
+
+
+def compile_script_rules() -> yara.Rules:
+    """Compile the namespaces that only run on npm lifecycle script strings
+    (``esl002``). Kept out of ``compile_rules`` so they never see a member."""
+    return _compile(script_rules=True)
 
 
 def scan_member(m: Member, ctx: ScanContext) -> list[Finding]:

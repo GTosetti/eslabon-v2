@@ -72,7 +72,10 @@ or a GNU sparse tar member) was recorded. These anomaly kinds do **not** make a 
 incomplete: `special_member` (tar FIFO, character or block device: no content),
 `overlapped_entry` (zip entries sharing one local header: the data was read and scanned),
 and `dir_with_content` (a zip entry that looks like a directory but carries data, or whose stored
-and host-mapped names disagree: it is read and scanned as a regular member).
+and host-mapped names disagree: it is read and scanned as a regular member), and
+`bad_package_json` (an npm `package.json` at the package root that is not UTF-8, not valid
+JSON or not a JSON object: npm itself would refuse to install it, so ESL-002 records no
+finding for it; the bytes were still matched by the other rules).
 
 Exit code of `eslabon scan`: 2 for every status other than `ok` (and for any usage or IO
 error), 1 if the status is `ok` and there are findings, 0 otherwise.

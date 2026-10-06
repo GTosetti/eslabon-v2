@@ -20,7 +20,7 @@ from builders import TarItem, make_tar
 
 import eslabon.cli as cli
 import eslabon.scan as scan
-from eslabon import yara_engine
+from eslabon import npm_scripts, yara_engine
 from eslabon.model import (
     Limits,
     LimitsExceeded,
@@ -174,7 +174,7 @@ def test_rules_compile_with_error_on_warning():
         assert r.meta.get("esl_id", "").startswith("ESL-")
     rule_dir = Path(yara_engine.__file__).parent / "rules"
     files = sorted(rule_dir.glob("*.yar"))
-    assert [p.stem for p in files] == ["esl001", "esl003"]
+    assert [p.stem for p in files] == ["esl001", "esl002", "esl003"]
     for p in files:
         yara.compile(filepath=str(p), error_on_warning=True)
         assert p.read_bytes().isascii()
@@ -303,7 +303,10 @@ _SKIP_DIRS = {
 
 def test_repo_files_do_not_trip_the_rules():
     # Our own rules (and AV/GitHub scanners) would flag committed literals, so
-    # every repo file is matched against the shipped rules themselves.
+    # every repo file is matched against the shipped rules themselves. The
+    # script-only esl002 namespace matches any URL and only ever sees decoded
+    # lifecycle script strings, so it is checked on those (repo package.json
+    # files, if any) rather than on raw file bytes.
     rules = yara_engine.compile_rules()
     root = Path(__file__).parent.parent
     hits = []
@@ -315,8 +318,15 @@ def test_repo_files_do_not_trip_the_rules():
             path = Path(dirpath) / name
             if path.stat().st_size > 10 * 2**20:
                 continue
-            if rules.match(data=path.read_bytes()):
+            data = path.read_bytes()
+            if rules.match(data=data):
                 hits.append(path.relative_to(root).as_posix())
+            if name == "package.json":
+                m = Member(0, "package.json", data, "package/package.json")
+                pkg = PackageRef(None, None, "npm", "")
+                ctx = ScanContext(None, Limits(), pkg, "npm")
+                if npm_scripts.scan_package_json(m, ctx):
+                    hits.append(path.relative_to(root).as_posix())
     assert hits == [], f"files matching the shipped rules: {hits}"
 
 
