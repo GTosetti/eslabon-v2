@@ -20,11 +20,18 @@ from eslabon.sanitize import to_hex
 from eslabon.typosquat import TopList, check, distance, name_from_filename, normalize
 
 PYPI = TopList.from_names(
-    ["boto3", "requests", "numpy", "numba", "boto", "typing-extensions", "six"],
+    [
+        "boto3", "requests", "numpy", "numba", "boto", "typing-extensions", "six",
+        "urllib3", "beautifulsoup4", "abcdefgh", "abcdefg",
+    ],
     "pypi",
 )
 NPM = TopList.from_names(
-    ["react", "ms", "qs", "ws", "chalk", "chai", "@babel/core", "lodash"], "npm"
+    [
+        "react", "ms", "qs", "ws", "chalk", "chai", "@babel/core", "lodash",
+        "@types/node", "eslint", "typescript",
+    ],
+    "npm",
 )
 
 
@@ -86,13 +93,46 @@ def test_npm_normalisation_strips_scope_and_lowercases():
 
 
 def test_short_name_threshold_is_1():
-    # len(normalized) <= 5: only distance 1 counts
+    # length 4-5: only distance 1 counts
     assert check("numpi", "pypi", PYPI) is not None  # distance 1 from numpy
     assert check("nampi", "pypi", PYPI) is None  # distance 2: too far for a short name
-    # longer names: distance 2 counts, 3 does not
-    f = check("reqeustz", "pypi", PYPI)
-    assert f is not None and f.snippet.endswith("(distance 2)")
+    assert check("abcde", "pypi", PYPI) is None  # 2 deletions, but only 5 long
+    # longer names: distance 2 counts (no substitution), 3 does not
+    f = check("requsts", "pypi", PYPI)
+    assert f is not None and f.snippet.endswith("(distance 1)")
     assert check("rxqxxsts", "pypi", PYPI) is None  # distance 3
+
+
+def test_names_shorter_than_4_are_not_checked():
+    assert check("siz", "pypi", PYPI) is None  # distance 1 from six, but length 3
+    assert check("sixx", "pypi", PYPI) is not None  # length 4: checked
+    assert check("rect", "npm", NPM) is not None  # length 4, distance 1 from react
+    assert check("rea", "npm", NPM) is None
+
+
+def test_distance_2_needs_no_substitution_and_same_first_char():
+    # two deletions, same first character, length >= 6: fires
+    f = check("abcdef", "pypi", PYPI)  # vs abcdefgh (and abcdefg at distance 1)
+    assert f is not None and f.snippet == "abcdef ~ abcdefg (distance 1)"
+    f = check("requts", "pypi", PYPI)  # 2 deletions from requests
+    assert f is not None and f.snippet == "requts ~ requests (distance 2)"
+    f = check("reqeustss", "pypi", PYPI)  # transposition + insertion
+    assert f is not None and f.snippet.endswith("(distance 2)")
+    # two substitutions: OSA distance 2, but not a typo shape
+    assert distance("rexuezts", "requests") == 2
+    assert check("rexuezts", "pypi", PYPI) is None
+    # one substitution + one deletion is also refused at distance 2
+    assert check("rexuests", "pypi", PYPI) is not None  # distance 1: allowed
+    assert check("rexusts", "pypi", PYPI) is None
+    # first character differs: distance 2 refused
+    assert check("equestss", "pypi", PYPI) is None
+
+
+def test_digit_squats_fire():
+    assert check("urllib33", "pypi", PYPI) is not None
+    assert check("beautifulsoup44", "pypi", PYPI) is not None
+    assert check("chalk2", "npm", NPM) is not None
+    assert check("typescript3", "npm", NPM) is not None
 
 
 def test_distance_transposition_is_1():
@@ -139,10 +179,32 @@ def test_exemption_covers_top_5000_but_targets_only_top_1000():
     assert check(_one_edit(names[999]), "pypi", top) is not None
 
 
-def test_full_name_exemption_keeps_the_scope():
-    # "@babel/core" is exempt; "@evil/core" is not, and is scope confusion
-    f = check("@evil/core", "npm", NPM)
-    assert f is not None and f.snippet == "@evil/core ~ @babel/core (scope confusion)"
+def test_scoped_target_is_never_a_comparison_target():
+    # "@evil/core" vs "@babel/core": the target is scoped, so no comparison
+    assert check("@evil/core", "npm", NPM) is None
+    # unscoped names are never compared with a scoped target's bare name
+    assert check("node", "npm", NPM) is None
+    assert check("nodee", "npm", NPM) is None
+    assert check("core", "npm", NPM) is None
+
+
+def test_owned_scope_is_skipped():
+    # @types and @babel own top-5,000 names: nobody else can publish there
+    assert check("@types/node", "npm", NPM) is None
+    assert check("@types/nodee", "npm", NPM) is None
+    assert check("@babel/cor", "npm", NPM) is None
+    # the bare name is a target, but the scope is owned
+    assert check("@babel/react", "npm", NPM) is None
+    assert check("@Babel/react", "npm", NPM) is None  # scopes are case-insensitive
+
+
+def test_unowned_scope_confusion():
+    f = check("@typescript_eslinter/eslint", "npm", NPM)
+    assert f is not None
+    assert f.snippet == "@typescript_eslinter/eslint ~ eslint (scope confusion)"
+    # an unowned scope with a bare name that is only NEAR a target: not reported
+    assert check("@evil/reakt", "npm", NPM) is None
+    assert check("@evil/my-tool", "npm", NPM) is None
 
 
 def test_closest_target_wins_and_one_finding():
@@ -190,7 +252,8 @@ def test_bundled_list_shape(eco):
     assert len(names) == 6000 and len(set(names)) == 6000
     assert all(isinstance(n, str) and 0 < len(n) <= 214 for n in names)
     top = _bundled(eco)
-    assert len(top.targets) == 1000 and len(top.exempt) <= 5000
+    assert len(top.exempt) <= 5000
+    assert len(top.targets) == 1000 if eco == "pypi" else 0 < len(top.targets) <= 1000
 
 
 def test_load_top_list_rejects_unknown_ecosystem():
@@ -222,3 +285,20 @@ def test_load_top_list_rejects_unknown_ecosystem():
 )
 def test_name_from_filename(filename, kind, expected):
     assert name_from_filename(filename, kind) == expected
+
+
+@pytest.mark.parametrize(
+    ("filename", "kind", "meta", "expected"),
+    [
+        ("foo-1.0.0-2.tgz", "npm", "foo", "foo"),
+        ("foo-1.0.0-2.tgz", "npm", None, "foo-1.0.0"),  # no metadata: last "-<digit>"
+        ("pyyaml-6.0-1.tar.gz", "sdist", "PyYAML", "pyyaml"),
+        ("pyyaml-6.0-1.tar.gz", "sdist", None, "pyyaml-6.0"),
+        ("Typing_Ext-1.0-1.tar.gz", "sdist", "typing.ext", "Typing_Ext"),
+        ("evil-react-1.0.0-1.tgz", "npm", "@evil/react", "evil-react"),
+        ("other-1.0-1.tar.gz", "sdist", "pyyaml", "other-1.0"),  # no prefix match
+        ("pyyaml2-6.0.tar.gz", "sdist", "pyyaml", "pyyaml2"),  # prefix needs "-<digit>"
+    ],
+)
+def test_name_from_filename_prefers_the_metadata_name(filename, kind, meta, expected):
+    assert name_from_filename(filename, kind, meta) == expected

@@ -124,7 +124,9 @@ An attacker can switch identity checks off by breaking the metadata (`no_metadat
 `ambiguous_metadata`). So when the metadata gives no name, ESL-005 falls back to the name in
 the archive's **file** name (wheel: the first `-` field of `{name}-{ver}-...whl`; sdist and
 npm: the suffix `.tar.gz`/`.tgz`/`.tar.bz2`/`.zip` is stripped and the name ends at the
-last `-` followed by a digit). `eslabon.identity_source` records which one was used.
+last `-` followed by a digit). When a metadata name exists, a file stem that starts with a
+spelling of it followed by `-<digit>` gives that prefix first, so a rebuild suffix
+(`pyyaml-6.0-1.tar.gz`) is not a mismatch. `eslabon.identity_source` records which one was used.
 `package.name` stays metadata-only (`unknown` in that case).
 
 If both names exist and differ after normalisation (PEP 503 for PyPI; for npm a scoped

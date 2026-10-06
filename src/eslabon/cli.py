@@ -158,7 +158,7 @@ def _identity_checks(target: Path, ecosystem: str, result: ScanResult) -> None:
     """
     meta = result.metadata_name
     from_file = typosquat.name_from_filename(
-        target.name, archive_kind(target, ecosystem)
+        target.name, archive_kind(target, ecosystem), meta
     )
     names: list[str] = []
     if meta:

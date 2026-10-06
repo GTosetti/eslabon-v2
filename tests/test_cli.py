@@ -1039,3 +1039,22 @@ def test_esl005_runs_even_when_archive_too_big(dirs, monkeypatch):
     events = _events(dirs[1])
     assert len(_esl005(events)) == 1
     assert _summary(events)["eslabon"]["identity_source"] == "filename"
+
+
+def test_esl005_rebuilt_package_suffix_is_no_mismatch(dirs, monkeypatch):
+    # pyyaml-6.0-1.tar.gz: the last "-<digit>" would give "pyyaml-6.0"
+    _install_top(monkeypatch, ["requests"], [])
+    pkg_info = b"Metadata-Version: 2.1\nName: PyYAML\nVersion: 6.0\n\n"
+    data = make_tar([TarItem("PyYAML-6.0/PKG-INFO", pkg_info)])
+    target = _put(dirs, "pyyaml-6.0-1.tar.gz", data)
+    assert _run(target, dirs[1], "--ecosystem", "pypi") == 0
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert "identity_mismatch" not in sc["anomaly_kinds"]
+
+
+def test_esl005_npm_rebuild_suffix_is_no_mismatch(dirs, monkeypatch):
+    _install_top(monkeypatch, [], ["react"])
+    target = _put(dirs, "left-pad-1.3.0-2.tgz", CLEAN_TGZ)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert "identity_mismatch" not in sc["anomaly_kinds"]

@@ -1,5 +1,5 @@
 {
-"source": "https://raw.githubusercontent.com/wooorm/npm-high-impact/main/lib/top.js",
+"source": "https://raw.githubusercontent.com/wooorm/npm-high-impact/main/lib/top-download.js",
 "retrieved": "2026-10-06",
 "names": [
 "semver",
