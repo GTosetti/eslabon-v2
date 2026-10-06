@@ -54,57 +54,47 @@ _LOCAL_REQUIRE = re.compile(
     r"""(?:\}\s*catch\s*(?:\(\s*\w*\s*\))?\s*\{\s*\}\s*)?\1"""
     r"""(?:\s*\|\|\s*(?:exit\s+0|true))?"""
 )
-# node -e / -p token rule (R35, R36). A shell command is the text between two
-# separators (; & | or a line break) that sh acts on: separators inside quotes
-# or after a backslash are blanked first (_blank_literal_separators). In one
-# command, a node binary word (node, nodejs, node.exe, nodejs.exe, node.cmd,
-# nodejs.cmd, optionally behind a / or \ path,
-# quotes, '(' '$' or '`') followed ANYWHERE later by an eval flag word (-e, -p,
-# -pe, -ep, --eval, --print, or --eval=/--print=...) fires. No option list
-# to keep complete: values of any shape and number may sit in between.
-# Linear: each command is entered once at its start (the lookbehind fails in
-# O(1) elsewhere) and both runs are atomic, so nothing is rescanned when a
-# command has a node word but no flag. Case-insensitive (NODE.EXE -E fires).
+# node -e / -p token rule (R38). NO shell emulation: separators, quoting and
+# escapes are not interpreted, because every emulation (separators, quotes,
+# CR, cmd.exe carets, bash $'...') was one more way to hide a node -e. A node
+# binary word (node, nodejs, optionally .exe/.cmd, optionally behind a / or \
+# path, a quote, '(', '$' or '`') followed ANYWHERE later in the script by an
+# eval flag word (-e, -p, -pe, -ep, --eval, --print, --eval=..., --print=...)
+# fires, even when the flag belongs to a later command (accepted over-firing:
+# 'node install.js && echo -e done'). Words are delimited by whitespace, the
+# start/end, quotes, parens, backticks and ; & |, so node-gyp, ts-node,
+# nodemon, -env, -ep2 and --evaluate are not words of the rule.
+# Case-insensitive (NODE.EXE -E fires).
 _NODE_WORD = r"""(?<![^\s;&|"'`()$/\\])node(?:js)?(?:\.exe|\.cmd)?(?![^\s;&|"'`()])"""
+_FLAG_END = r"""(?![^\s;&|"'`()])"""
 _EVAL_FLAG = (
-    r"""(?<![^\s"'`(])(?:-e|-p|-pe|-ep|--eval|--print)(?:=|(?![^\s;&|"'`)]))"""
+    r"""(?<![^\s;&|"'`(])(?:(?:-e|-p|-pe|-ep)""" + _FLAG_END
+    + r"|--(?:eval|print)(?:=|" + _FLAG_END + "))"
 )
-_IN_COMMAND = r"[^;&|\r\n]"
-_NODE_EVAL = re.compile(
-    r"(?:^|(?<=[;&|\r\n]))"
-    r"(?>(?:(?!" + _NODE_WORD + ")" + _IN_COMMAND + r")*)" + _NODE_WORD
-    + r"(?>(?:(?!" + _EVAL_FLAG + ")" + _IN_COMMAND + r")*)" + _EVAL_FLAG,
-    re.IGNORECASE,
+# One left-to-right pass; each branch starts with a fixed character and its
+# lookarounds are O(1), so the scan is linear whatever the input.
+_NODE_TOKEN = re.compile(
+    "(?P<node>" + _NODE_WORD + ")|(?P<flag>" + _EVAL_FLAG + ")", re.IGNORECASE
 )
-
-
-# Text in which POSIX sh treats ; & | and line breaks as literal characters:
-# '...' (no escapes), "..." (backslash escapes honoured) and a backslash-escaped
-# character outside quotes. An unclosed quote runs to the end. Every branch is
-# a single forward run with disjoint classes, so one finditer pass is linear.
-_SH_LITERAL = re.compile(
-    r"""'[^']*(?:'|\Z)"""
-    r'''|"[^"\\]*(?:\\[\s\S]?[^"\\]*)*(?:"|\Z)'''
-    r"""|\\[\s\S]"""
-)
-_SEPARATOR_TO_SPACE = str.maketrans({c: " " for c in ";&|\r\n"})
-
-
-def _blank_literal_separators(script: str) -> str:
-    """``script`` with the separators sh would not act on replaced by spaces.
-
-    Only ever joins commands, so the node token rule can only gain matches.
-    """
-    if not any(c in script for c in "'\"\\"):
-        return script
-    return _SH_LITERAL.sub(lambda m: m.group().translate(_SEPARATOR_TO_SPACE), script)
 
 
 def node_evals(script: str) -> int:
-    """Shell commands in ``script`` that run node with inline code (-e/-p)."""
-    if "node" not in script.lower():  # fast path: the full pass costs ~1.5 s/10 MiB
+    """node words in ``script`` that are followed later by an eval flag.
+
+    Pairs are taken left to right without overlap: a flag closes the open
+    node word, so ``node -e 1; node -e 2`` counts 2 and ``node a node b -e``
+    counts 1.
+    """
+    if "node" not in script.lower():  # fast path for the common script
         return 0
-    return sum(1 for _ in _NODE_EVAL.finditer(_blank_literal_separators(script)))
+    count, open_node = 0, False
+    for m in _NODE_TOKEN.finditer(script):
+        if m.lastgroup == "node":
+            open_node = True
+        elif open_node:
+            count += 1
+            open_node = False
+    return count
 
 
 @functools.cache

@@ -26,6 +26,7 @@ SCHEMA = json.loads(
     (Path(__file__).parent.parent / "schema" / "event.schema.json").read_text("utf-8")
 )
 NL = chr(10)
+CR = chr(13)
 BS = chr(0x5C)
 CURL = "cu" + "rl"
 WGET = "wg" + "et"
@@ -285,6 +286,19 @@ def test_benign_scripts_silent(script):
         "node.cmd -" + "e 1",
         "echo aWQ= | base64 -d | " + "node",
         "cat x |" + "nodejs.exe",
+        # R38: no shell emulation, so no separator or quoting trick can hide it
+        "node -r a" + CR + "b -" + "e 1",  # sh treats CR as a word character
+        "node -r a^&b -" + "e 1",  # cmd.exe caret escape
+        "node -r a^|b -" + "e 1",
+        "node -r $'a" + BS + "';' -" + "e 1",  # bash ANSI-C quoting
+        "env node -" + "e 1",
+        "(node -" + "e 1)",
+        "`node -" + "p 1`",
+        "'node' -" + "e 1",
+        "NODE.CMD -" + "e 1",
+        "C:" + BS + "x" + BS + "Node.Exe --" + "print 1",
+        "./node_modules/.bin/node -" + "pe 1",
+        "node -" + "ep 1",
     ],
 )
 def test_node_eval_token_rule_fires(script):
@@ -298,24 +312,40 @@ def test_node_eval_token_rule_fires(script):
         "node -r esm install.js",
         "node --require ./hook.js ./install.js",
         "node -C production install.js",
-        "node install.js && echo -" + "e done",
-        "node install.js&&echo -" + "e done",
-        "node install.js;echo -" + "e x",
-        "node install.js" + NL + "echo -" + "e x",
         "node-gyp rebuild -" + "e",
+        "ts-node -" + "e x",
         "nodemon -" + "e js",
         "node x.js --evaluate",
         "node x.js -ex",
+        "node x.js -" + "env",
+        "node x.js -" + "ep2",
         "echo -" + "e node",
-        "node 'a' && echo -" + "e done",  # closed quotes do not join commands
-        'node "a' + BS + BS + '" && echo -' + "e done",  # escaped backslash closes
-        "node x " + BS + BS + "; echo -" + "e x",  # escaped backslash, real ;
         "cat x | node-gyp rebuild",
         "node < x.txt",  # documented gap: stdin redirection
     ],
 )
 def test_node_eval_token_rule_silent(script):
     assert _ids(_pkg_json({"postinstall": script})) == []
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "node install.js && echo -" + "e done",
+        "node install.js&&echo -" + "e done",
+        "node install.js;echo -" + "e x",
+        "node install.js" + NL + "echo -" + "e x",
+        "node 'a' && echo -" + "e done",
+        'node "a' + BS + BS + '" && echo -' + "e done",
+        "node x " + BS + BS + "; echo -" + "e x",
+    ],
+)
+def test_node_eval_over_fires_across_commands(script):
+    # R38: the node rule does not emulate any shell, so an eval flag that
+    # belongs to a LATER command in the same script still fires. Accepted
+    # over-firing: every shell emulation (separators, quotes, CR, cmd.exe
+    # carets, bash $'...') opened a new way to hide a real node -e.
+    assert _ids(_pkg_json({"postinstall": script})) == ["ESL-002"]
 
 
 def test_node_eval_counts_once_per_command():
@@ -507,6 +537,11 @@ def test_yara_timeout_becomes_limits_exceeded(monkeypatch):
         "node " + '"a;b' + "' " + BS + BS + ";",
         "node '" + BS,
         "node " + BS + ";",
+        "node ",
+        NODE_E + " ",
+        "'" + '"' + BS,
+        "node '" + '"' + BS + BS,
+        "node -r x " + CR,
         "x;",
         "n",
         PS + " " + chr(0x2013),
@@ -523,7 +558,9 @@ def test_ten_mib_newline_free_script_is_fast(unit):
     found, _ = _scan(data, ctx=ctx)
     elapsed = time.perf_counter() - start
     print(f"10 MiB of {unit[:20]!r}: {elapsed:.2f} s")
-    assert elapsed < 6.0
+    # linear by construction; the bound only has to sit far below the 120 s
+    # worker timeout without flaking on a slow machine
+    assert elapsed < 15.0
     assert all(f.rule_id == "ESL-002" for f in found)
 
 

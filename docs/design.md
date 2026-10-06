@@ -165,7 +165,14 @@ Both are committed with their date and URL.
   For the same reason `node -e "require('./x')"` (core-js, es5-ext) is not flagged. Also
   not matched: `npx <pkg>` (`npx only-allow pnpm` is a common benign preinstall), inline
   code of other interpreters (`python -c`, `perl -e`, `bun -e`, `deno eval`), `sh -c`
-  without a download tool or URL, and shell quoting tricks that split a word (`c''url`).
+  without a download tool or URL, shell quoting tricks that split a word (`c''url`,
+  `n''ode`), and node reading code from stdin (`node < file`).
+  The `node -e`/`-p` check emulates no shell: it fires when a node word is followed
+  anywhere later in the same script by an eval flag word, ignoring separators and quoting.
+  It may therefore over-fire when the `-e`/`-p` belongs to another command later in the
+  same script (`node install.js && echo -e done`); each attempt to parse the shell
+  instead (separators, quotes, CR, cmd.exe carets, bash `$'...'`) opened a way to hide
+  a real `node -e`.
 - ESL-004 misses exfiltration to an ordinary domain.
 - ESL-003 misses multi-stage decoding split across lines.
 - ESL-005 misses typosquats of packages outside the top 1,000.

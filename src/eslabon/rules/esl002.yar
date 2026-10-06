@@ -19,10 +19,12 @@
 // Every window is bounded and each token run is followed by a disjoint
 // class ([^ ] then ' '), so 10 MiB newline-free scripts stay linear.
 // node -e / -p / --eval / --print is NOT matched here: npm_scripts applies a
-// token rule (a node word, then an eval flag anywhere later in the same shell
-// command), because node options take values of any shape and number, and a
-// value window in a regex let every 'node' hit chain over the next ones
-// (20 s on 10 MiB of 'node -r ').
+// token rule (a node word, then an eval flag word anywhere later in the same
+// script string), because node options take values of any shape and number,
+// and a value window in a regex let every 'node' hit chain over the next ones
+// (20 s on 10 MiB of 'node -r '). That rule emulates no shell (R38): it
+// ignores separators and quoting, so it may over-fire when the -e/-p belongs
+// to a later command ('node install.js && echo -e done').
 // PowerShell: a flag that is a prefix of -EncodedCommand (-e, -ec, -en,
 // -enc, ...) or of -EncodedArguments, introduced by '-', '/' or an en dash,
 // em dash or horizontal bar (U+2013..U+2015, matched as UTF-8 bytes),
@@ -35,7 +37,8 @@
 // Documented gaps: npx (not matched: 'npx only-allow pnpm' is a common
 // benign preinstall); inline code of other interpreters (python -c, perl -e,
 // bun -e, deno eval); sh -c / bash -c without a download tool or URL; shell
-// quoting tricks that split a word (c''url, c\url, $'\x63url').
+// quoting tricks that split a word (c''url, c\url, $'\x63url', n''ode,
+// -''e); node reading code from stdin ('node < file').
 
 rule esl002_download_tool
 {
