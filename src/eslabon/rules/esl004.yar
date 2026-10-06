@@ -8,7 +8,7 @@
 // or Object.assign({}, process.env); json.dumps of os.environ, dict(os.environ)
 // or {**os.environ}; str(os.environ).
 // A single variable (JSON.stringify(process.env.NODE_ENV), in every webpack
-// bundle) is not a dump: process.env must be followed by ')' or '}'. Python
+// bundle) is not a dump: process.env must be followed by ')', '}' or ','. Python
 // json.dumps(os.environ[...]) still counts on purpose: one secret is enough.
 // Left out deliberately: bare {...process.env}, {**os.environ} and
 // Object.entries(process.env) iteration, the idioms that copy the environment
@@ -39,9 +39,9 @@ rule esl004_secret_exfil
         $cred_kube = /\.kube(\/|\\{1,2})config/ nocase
         $cred_ssh_seg = /['"]\.ssh['"]\s{0,10}[,\/]\s{0,10}['"]id_(rsa|ed25519|ecdsa|dsa)/ nocase
         $cred_aws_seg = /['"]\.aws['"]\s{0,10}[,\/]\s{0,10}['"]credentials/ nocase
-        $cred_js_env = /JSON\.stringify\(\s{0,10}(\{\s{0,10}\.\.\.\s{0,10}|Object\.entries\(\s{0,10}|Object\.assign\(\s{0,10}\{\s{0,10}\}\s{0,10},\s{0,10})?process\.env\s{0,10}[)}]/
+        $cred_js_env = /JSON\.stringify\(\s{0,10}(\{\s{0,10}\.\.\.\s{0,10}|Object\.entries\(\s{0,10}|Object\.assign\(\s{0,10}\{\s{0,10}\}\s{0,10},\s{0,10})?process\.env\s{0,10}[)},]/
         $cred_py_env = /json\.dumps\(\s{0,10}(dict\(\s{0,10})?os\.environ/
-        $cred_py_env_spread = /json\.dumps\(\s{0,10}\{\s{0,10}\*\*\s{0,10}os\.environ\s{0,10}\}/
+        $cred_py_env_spread = /json\.dumps\(\s{0,10}\{\s{0,10}\*\*\s{0,10}os\.environ\s{0,10}[},]/
         $cred_py_str = /str\(\s{0,10}os\.environ\s{0,10}\)/
         $sink_discord = /discord(app)?\.com\/api\/webhooks/ nocase
         $sink_telegram = /api\.telegram\.org\/bot/ nocase

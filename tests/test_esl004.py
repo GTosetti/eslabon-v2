@@ -147,6 +147,9 @@ def test_aws_credentials_plus_ngrok_fires():
         "JSON." + "stringify(Object." + "assign({}, process" + ".env))",
         "json." + "dumps({**os" + ".environ})",
         "json." + "dumps( { ** os" + ".environ } )",
+        "JSON." + "stringify(process" + ".env, null, 2)",
+        "JSON." + "stringify({...process" + ".env, A:1})",
+        "json." + "dumps({**os" + ".environ, 'x': 1})",
         "path.join(h, '." + "ssh', 'id_" + "rsa')",
         "os.path.join(home, \"." + "ssh\", \"id_" + "dsa\")",
         "Path.home() / '." + "ssh' / 'id_" + "ed25519'",
@@ -302,6 +305,11 @@ def test_child_env_idioms_and_other_dotfiles_silent(src):
     assert _scan(src + NL + "x = '" + DISCORD + "'" + NL) == []
 
 
+def test_node_env_stringify_with_indent_silent():
+    src = "JSON." + "stringify(process" + ".env.NODE_ENV, null, 2);" + NL + DISCORD + NL
+    assert _scan(src, "dist/bundle.js") == []
+
+
 def test_dict_environ_to_subprocess_silent():
     src = NL.join(
         [
@@ -435,6 +443,7 @@ def test_capped_ip_string_is_kept_unfiltered():
         "JSON." + "stringify(" + " " * 9,
         "json." + "dumps(dict(" + " " * 9,
         "JSON." + "stringify({" + " " * 9,
+        "JSON." + "stringify(process" + ".env,",
         "JSON." + "stringify(Object.assign({}" + " " * 9,
         "json." + "dumps({" + " " * 9 + "**",
         "'." + "ssh', '",
