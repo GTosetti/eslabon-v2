@@ -79,15 +79,23 @@ class Artifact:
     hash_value: str  # lowercase hex
 
 
+_CONTROL_OR_SPACE = re.compile(r"[\x00-\x20\x7f]")
+
+
 def _check_url(url: str) -> None:
+    # Before urlsplit, which silently strips tab/CR/LF ("https://pyp<LF>i.org").
+    if not isinstance(url, str) or _CONTROL_OR_SPACE.search(url):
+        raise FetchError("fetch: url with control characters or spaces refused")
     try:
         parts = urlsplit(url)
         host = parts.hostname
-        _ = parts.port  # a malformed port raises ValueError
+        port = parts.port  # a malformed port raises ValueError
     except ValueError as exc:
         raise FetchError("fetch: malformed url") from exc
     if parts.scheme != "https" or host not in ALLOWED_HOSTS:
         raise FetchError("fetch: url not https to an allowed registry host")
+    if port not in (None, 443):
+        raise FetchError("fetch: url not on the https port")
     if parts.username is not None or parts.password is not None:
         raise FetchError("fetch: url with credentials refused")
 

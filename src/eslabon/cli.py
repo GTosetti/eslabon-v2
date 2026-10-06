@@ -161,32 +161,72 @@ def _scan_registry(
 
     The archive is the only package data ever written to disk: one file, under
     its sanitised registry file name (so its suffix decides the archive kind as
-    for a local file), in a fresh tempfile.mkdtemp() directory outside the
-    working tree, removed with that directory whatever happens. It is never
-    extracted, installed or executed.
+    for a local file), in a fresh tempfile.mkdtemp() directory, removed with that
+    directory whatever happens. It is never extracted, installed or executed.
+    If the temp dir lands inside the cwd or the repo, nothing is fetched
+    (fetch_error). A dir rmtree could not remove is reported on stderr and as
+    the anomaly temp_leftover (not "incomplete").
     """
     tmp = Path(tempfile.mkdtemp(prefix="eslabon-"))
-    artifact: fetch.Artifact | None = None
     try:
-        deadline = fetch.new_deadline()
-        try:
-            artifact = fetch.resolve(name, version, ecosystem, deadline=deadline)
-            path, anomalies = fetch.download(artifact, tmp, limits, deadline=deadline)
-        except HashMismatch as exc:
-            failed = _fetch_failed("hash_mismatch", str(exc), artifact)
-            return failed, exc.actual_sha256
-        except LimitsExceeded as exc:
-            return _fetch_failed("limits_exceeded", str(exc), artifact), ""
-        except FetchError as exc:
-            return _fetch_failed("fetch_error", str(exc), artifact), ""
-        except Exception as exc:  # fail closed on anything unexpected
-            error = f"fetch error: {type(exc).__name__}"
-            return _fetch_failed("fetch_error", error, artifact), ""
-        result, sha = _scan_file(path, ecosystem, limits)
-        result.anomalies.extend(anomalies)
-        return result, sha
+        if _temp_dir_unsafe(tmp):
+            # TMPDIR/TEMP/TMP point into the working tree or the repo (or
+            # mkdtemp fell back to the cwd): hostile bytes must not land there
+            result, sha = _fetch_failed("fetch_error", _TEMP_UNSAFE, None), ""
+        else:
+            result, sha = _fetch_and_scan(name, version, ecosystem, limits, tmp)
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
+    if os.path.lexists(tmp):
+        # one stderr line; not "incomplete": the scan itself is complete
+        where = clean_text(str(tmp), 512)
+        print(f"eslabon: warning: temp dir not removed: {where}", file=sys.stderr)
+        result.anomalies.append(Anomaly("temp_leftover", "", where))
+    return result, sha
+
+
+_TEMP_UNSAFE = "temp dir inside working tree"
+
+
+def _protected_roots() -> list[Path]:
+    """The cwd and the Eslabon source tree (repo root when run from src/)."""
+    package = Path(__file__).resolve().parent
+    roots = [Path.cwd().resolve(), package]
+    if package.parent.name == "src":
+        roots.append(package.parent.parent)
+    return roots
+
+
+def _temp_dir_unsafe(tmp: Path) -> bool:
+    """True if ``tmp`` (symlinks resolved) is inside the cwd or the repo."""
+    try:
+        real = tmp.resolve()
+    except OSError:
+        return True
+    return any(real == root or root in real.parents for root in _protected_roots())
+
+
+def _fetch_and_scan(
+    name: str, version: str, ecosystem: str, limits: Limits, tmp: Path
+) -> tuple[ScanResult, str]:
+    artifact: fetch.Artifact | None = None
+    deadline = fetch.new_deadline()
+    try:
+        artifact = fetch.resolve(name, version, ecosystem, deadline=deadline)
+        path, anomalies = fetch.download(artifact, tmp, limits, deadline=deadline)
+    except HashMismatch as exc:
+        failed = _fetch_failed("hash_mismatch", str(exc), artifact)
+        return failed, exc.actual_sha256
+    except LimitsExceeded as exc:
+        return _fetch_failed("limits_exceeded", str(exc), artifact), ""
+    except FetchError as exc:
+        return _fetch_failed("fetch_error", str(exc), artifact), ""
+    except Exception as exc:  # fail closed on anything unexpected
+        error = f"fetch error: {type(exc).__name__}"
+        return _fetch_failed("fetch_error", error, artifact), ""
+    result, sha = _scan_file(path, ecosystem, limits)
+    result.anomalies.extend(anomalies)
+    return result, sha
 
 
 def _fetch_failed(

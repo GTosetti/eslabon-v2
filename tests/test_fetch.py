@@ -869,3 +869,103 @@ def test_real_npm_ms_2_1_3_hash_verified(tmp_path):
     path, anomalies = fetch.download(a, tmp_path, Limits(), opener=fetch.urllib_opener)
     assert anomalies == []
     assert hashlib.sha512(path.read_bytes()).hexdigest() == a.hash_value
+
+
+# ------------------------------------------------- fix round 1 (R49) ----
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://pypi.org:8443/x",
+        "https://pypi.org:0/x",
+        "https://files.pythonhosted.org:444/x",
+        "https://registry.npmjs.org:80/x",
+    ],
+)
+def test_only_default_https_port_allowed(url):
+    with pytest.raises(FetchError):
+        fetch._check_url(url)
+    h = fetch._SafeRedirect()
+    req = urlreq.Request("https://pypi.org/a")
+    with pytest.raises(FetchError):
+        h.redirect_request(req, None, 302, "Found", {}, url)
+
+
+def test_explicit_443_allowed():
+    fetch._check_url("https://pypi.org:443/x")
+    fetch._check_url("https://files.pythonhosted.org/x")
+
+
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://pyp" + chr(10) + "i.org/x",
+        "https://pypi.org/x" + chr(13) + chr(10) + "Host: evil",
+        chr(9) + "https://pypi.org/x",
+        "https://pypi.org/a b",
+        "https://pypi.org/x" + chr(0),
+        "https://pypi.org/x" + chr(0x7F),
+        "https://pypi.org/x" + chr(0x1F),
+    ],
+)
+def test_control_chars_and_spaces_rejected_before_urlsplit(url):
+    with pytest.raises(FetchError):
+        fetch._check_url(url)
+    h = fetch._SafeRedirect()
+    req = urlreq.Request("https://pypi.org/a")
+    with pytest.raises(FetchError):
+        h.redirect_request(req, None, 302, "Found", {}, url)
+
+
+def test_dist_url_with_newline_rejected_before_download():
+    entry = dict(SDIST_E, url="https://files.python" + chr(10) + "hosted.org/p.tar.gz")
+    reg = Registry({"https://pypi.org/pypi/pkg/1.0/json": _pypi_doc(entry)})
+    with pytest.raises(FetchError):
+        fetch.resolve("pkg", "1.0", "pypi", opener=reg)
+    assert len(reg.requests) == 1
+
+
+def test_temp_dir_inside_working_tree_fails_closed(out, monkeypatch, track):
+    inside = out.parent.parent / "tmp-inside"
+    inside.mkdir()
+    monkeypatch.setattr(tempfile, "tempdir", str(inside))
+    reg = _pypi_registry()
+    monkeypatch.setattr(fetch, "DEFAULT_OPENER", reg)
+    assert _main("requests==2.32.3", out, "--ecosystem", "pypi", "--offline") == 2
+    s = _summary(out)
+    assert s["eslabon"]["scan"]["status"] == "fetch_error"
+    assert s["eslabon"]["scan"]["error"] == "temp dir inside working tree"
+    assert reg.requests == []  # nothing fetched, nothing written
+    assert os.listdir(inside) == []  # and the dir it made is gone
+    assert track["files"] == []
+
+
+def test_protected_temp_locations(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    assert cli._temp_dir_unsafe(tmp_path / "eslabon-x")
+    assert cli._temp_dir_unsafe(REPO / "eslabon-x")
+    assert cli._temp_dir_unsafe(REPO / "src" / "eslabon" / "eslabon-x")
+    elsewhere = Path(tempfile.gettempdir()) / "eslabon-x"
+    if tmp_path.resolve() not in elsewhere.resolve().parents:
+        assert not cli._temp_dir_unsafe(elsewhere)
+
+
+def test_temp_leftover_reported(out, monkeypatch, track, capsys):
+    monkeypatch.setattr(cli.shutil, "rmtree", lambda *a, **k: None)
+    monkeypatch.setattr(fetch, "DEFAULT_OPENER", _pypi_registry())
+    try:
+        code = _main("requests==2.32.3", out, "--ecosystem", "pypi", "--offline")
+        tmp = track["dirs"][0]
+        assert tmp.exists()
+        assert code == 0  # temp_leftover is not "incomplete"
+        sc = _summary(out)["eslabon"]["scan"]
+        assert sc["status"] == "ok"
+        assert sc["anomaly_kinds"] == ["temp_leftover"]
+        err = capsys.readouterr().err
+        assert err.count(chr(10)) == 1 and tmp.name in err
+    finally:
+        for d in track["dirs"]:
+            for f in d.iterdir():
+                f.unlink()
+            d.rmdir()

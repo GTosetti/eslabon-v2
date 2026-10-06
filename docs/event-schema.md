@@ -90,8 +90,13 @@ When several statuses apply, the first one in this list wins:
 `encrypted_member`, `unsupported_compression`, `bad_member` (a member whose read failed,
 or a GNU sparse tar member) or `package_json_too_deep` (an npm `package.json` at the package
 root nested too deep for Python's JSON parser; npm's parser reads it, so its install scripts
-and the package identity went unchecked) was recorded. These anomaly kinds do **not** make a scan
-incomplete: `special_member` (tar FIFO, character or block device: no content),
+and the package identity went unchecked) or `no_identity` (no package name from the
+`name==version` argument, the metadata or the archive file name, so ESL-005/006 could not
+run; also with `--offline`) was recorded. These anomaly kinds do **not** make a scan
+incomplete: `weak_hash_sha1` (a `name==version` npm download verified only against the
+registry's sha1 `shasum`, because no sha512 `integrity` is published), `temp_leftover` (a
+`name==version` scan could not remove the temporary directory holding the downloaded
+archive; the detail is its path, also printed as one stderr warning), `special_member` (tar FIFO, character or block device: no content),
 `overlapped_entry` (zip entries sharing one local header: the data was read and scanned),
 and `dir_with_content` (a zip entry that looks like a directory but carries data, or whose stored
 and host-mapped names disagree: it is read and scanned as a regular member), and

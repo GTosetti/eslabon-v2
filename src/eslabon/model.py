@@ -44,7 +44,10 @@ class Member:
 # identity_mismatch (the metadata name and the name in the archive's file name
 # differ after normalisation; both are checked by ESL-005; added by the cli),
 # no_identity (no package name from any source -- argument, metadata or file
-# name -- so ESL-005/006 could not run; added by the cli).
+# name -- so ESL-005/006 could not run; added by the cli),
+# weak_hash_sha1 (npm registry publishes only a sha1 shasum: verified against it),
+# temp_leftover (name==version: the temp dir holding the downloaded archive could
+# not be removed; detail = its path; the scan itself is complete).
 # Only encrypted_member, unsupported_compression, bad_member,
 # package_json_too_deep and no_identity mean "content (or a rule) not checked"
 # and make the status "incomplete".
