@@ -1,0 +1,54 @@
+Starting wazuh-logtest v4.14.0
+Type one log per line
+
+
+**Phase 1: Completed pre-decoding.
+	full event: '{"@timestamp":"2026-10-06T19:57:26.212Z","ecs":{"version":"9.5.0"},"event":{"kind":"alert","module":"eslabon","dataset":"eslabon.finding","category":["package","malware"],"type":["info"],"severity":8},"package":{"name":"demo","version":"1.0.0"},"eslabon":{"schema_version":"1.0","attack_version":"19.2","ecosystem":"npm","scan_id":"9478b110bc8c4a5192b95a0d6efa671b","archive":{"sha256":"3b01eb66e9dad034ef2b54ccb519dd60d12f54829999ae1baae2d14d382b564a"},"evidence":{"file":"package.json","line":1,"snippet":"<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>","name_hex":"7061636b6167652f7061636b6167652e6a736f6e","match_count":3},"mitigation":{"action":"Install with --ignore-scripts by default and allow-list the few packages that need lifecycle scripts.","residual_gap":"Does not judge the JS file an install script runs (postinstall: node index.js), the commonest shape of npm malware; ESL-003/004 cover that file.","detect":"Child processes of node/npm during install (sh, curl, powershell) and their outbound connections."}},"rule":{"id":"ESL-002","name":"npm-install-script-exec","ruleset":"eslabon","version":"0.1.0"},"threat":{"framework":"MITRE ATT&CK","technique":{"id":["T1546.016","T1059.007"],"name":["Installer Packages","JavaScript"]},"tactic":{"id":["TA0003","TA0004","TA0002"],"name":["Persistence","Privilege Escalation","Execution"]}}}'
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	@timestamp: '2026-10-06T19:57:26.212Z'
+	ecs.version: '9.5.0'
+	eslabon.archive.sha256: '3b01eb66e9dad034ef2b54ccb519dd60d12f54829999ae1baae2d14d382b564a'
+	eslabon.attack_version: '19.2'
+	eslabon.ecosystem: 'npm'
+	eslabon.evidence.file: 'package.json'
+	eslabon.evidence.line: '1'
+	eslabon.evidence.match_count: '3'
+	eslabon.evidence.name_hex: '7061636b6167652f7061636b6167652e6a736f6e'
+	eslabon.evidence.snippet: '<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>'
+	eslabon.mitigation.action: 'Install with --ignore-scripts by default and allow-list the few packages that need lifecycle scripts.'
+	eslabon.mitigation.detect: 'Child processes of node/npm during install (sh, curl, powershell) and their outbound connections.'
+	eslabon.mitigation.residual_gap: 'Does not judge the JS file an install script runs (postinstall: node index.js), the commonest shape of npm malware; ESL-003/004 cover that file.'
+	eslabon.scan_id: '9478b110bc8c4a5192b95a0d6efa671b'
+	eslabon.schema_version: '1.0'
+	event.category: '['package', 'malware']'
+	event.dataset: 'eslabon.finding'
+	event.kind: 'alert'
+	event.module: 'eslabon'
+	event.severity: '8'
+	event.type: '['info']'
+	package.name: 'demo'
+	package.version: '1.0.0'
+	rule.id: 'ESL-002'
+	rule.name: 'npm-install-script-exec'
+	rule.ruleset: 'eslabon'
+	rule.version: '0.1.0'
+	threat.framework: 'MITRE ATT&CK'
+	threat.tactic.id: '['TA0003', 'TA0004', 'TA0002']'
+	threat.tactic.name: '['Persistence', 'Privilege Escalation', 'Execution']'
+	threat.technique.id: '['T1546.016', 'T1059.007']'
+	threat.technique.name: '['Installer Packages', 'JavaScript']'
+
+**Phase 3: Completed filtering (rules).
+	id: '100302'
+	level: '11'
+	description: 'Eslabon v2: ESL-002 npm-install-script-exec in package demo (package.json)'
+	groups: '['eslabon_v2', 'supply_chain']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1546.016', 'T1059.007']'
+	mitre.tactic: '['Privilege Escalation', 'Persistence', 'Execution']'
+	mitre.technique: '['Installer Packages', 'JavaScript']'
+**Alert to be generated.
+

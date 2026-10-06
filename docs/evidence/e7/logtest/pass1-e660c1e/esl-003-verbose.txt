@@ -1,0 +1,241 @@
+Starting wazuh-logtest v4.14.0
+Type one log per line
+
+
+** Wazuh-Logtest: WARNING: Mitre Technique ID 'T1027.013' not found in database.
+
+**Phase 1: Completed pre-decoding.
+	full event: '{"@timestamp":"2026-10-06T18:33:17.997Z","ecs":{"version":"9.5.0"},"event":{"kind":"alert","module":"eslabon","dataset":"eslabon.finding","category":["package","malware"],"type":["info"],"severity":9},"package":{"name":"demo","version":"0.0.1"},"file":{"hash":{"sha256":"3cfb28db0808f20f86d1bcfcbcae3456bb365f163d481b67825457e092f0256e"}},"eslabon":{"schema_version":"1.0","attack_version":"19.2","ecosystem":"pypi","scan_id":"8db2a020158e49a48808b2c70439d69d","evidence":{"file":"demo-0.0.1/setup.py","line":4,"snippet":"<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>","name_hex":"64656d6f2d302e302e312f73657475702e7079","match_count":1},"mitigation":{"action":"Review or reject packages that decode and execute embedded payloads; sandbox first-run of unreviewed dependencies.","residual_gap":"Misses multi-stage decoding split across lines, so decoder and evaluator are not adjacent.","detect":"Interpreter processes spawning from package directories; dynamic code execution (eval/exec) of decoded data at runtime."}},"rule":{"id":"ESL-003","name":"encoded-exec","ruleset":"eslabon","version":"0.1.0"},"threat":{"framework":"MITRE ATT&CK","technique":{"id":["T1027.013","T1140"],"name":["Encrypted/Encoded File","Deobfuscate/Decode Files or Information"]},"tactic":{"id":["TA0005"],"name":["Stealth"]}}}'
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	@timestamp: '2026-10-06T18:33:17.997Z'
+	ecs.version: '9.5.0'
+	eslabon.attack_version: '19.2'
+	eslabon.ecosystem: 'pypi'
+	eslabon.evidence.file: 'demo-0.0.1/setup.py'
+	eslabon.evidence.line: '4'
+	eslabon.evidence.match_count: '1'
+	eslabon.evidence.name_hex: '64656d6f2d302e302e312f73657475702e7079'
+	eslabon.evidence.snippet: '<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>'
+	eslabon.mitigation.action: 'Review or reject packages that decode and execute embedded payloads; sandbox first-run of unreviewed dependencies.'
+	eslabon.mitigation.detect: 'Interpreter processes spawning from package directories; dynamic code execution (eval/exec) of decoded data at runtime.'
+	eslabon.mitigation.residual_gap: 'Misses multi-stage decoding split across lines, so decoder and evaluator are not adjacent.'
+	eslabon.scan_id: '8db2a020158e49a48808b2c70439d69d'
+	eslabon.schema_version: '1.0'
+	event.category: '['package', 'malware']'
+	event.dataset: 'eslabon.finding'
+	event.kind: 'alert'
+	event.module: 'eslabon'
+	event.severity: '9'
+	event.type: '['info']'
+	file.hash.sha256: '3cfb28db0808f20f86d1bcfcbcae3456bb365f163d481b67825457e092f0256e'
+	package.name: 'demo'
+	package.version: '0.0.1'
+	rule.id: 'ESL-003'
+	rule.name: 'encoded-exec'
+	rule.ruleset: 'eslabon'
+	rule.version: '0.1.0'
+	threat.framework: 'MITRE ATT&CK'
+	threat.tactic.id: '['TA0005']'
+	threat.tactic.name: '['Stealth']'
+	threat.technique.id: '['T1027.013', 'T1140']'
+	threat.technique.name: '['Encrypted/Encoded File', 'Deobfuscate/Decode Files or Information']'
+
+**Rule debugging:
+	Trying rule: 1 - Generic template for all syslog rules.
+		*Rule 1 matched
+		*Trying child rules
+	Trying rule: 600 - Active Response Messages Grouped
+	Trying rule: 650 - Active Response JSON Messages Grouped
+	Trying rule: 200 - Grouping of wazuh rules.
+	Trying rule: 400 - Rules for Wazuh API events.
+	Trying rule: 420 - Rules for Wazuh API events.
+	Trying rule: 2100 - NFS rules grouped.
+	Trying rule: 2507 - OpenLDAP group.
+	Trying rule: 2550 - rshd messages grouped.
+	Trying rule: 2701 - Ignoring procmail messages.
+	Trying rule: 2800 - Pre-match rule for smartd.
+	Trying rule: 5100 - Pre-match rule for kernel messages.
+	Trying rule: 5200 - Ignoring hpiod for producing useless logs.
+	Trying rule: 2830 - Crontab rule group.
+	Trying rule: 5300 - Initial grouping for su messages.
+	Trying rule: 5905 - useradd failed.
+	Trying rule: 5400 - Initial group for sudo messages.
+	Trying rule: 9100 - PPTPD messages grouped.
+	Trying rule: 9200 - Squid syslog messages grouped.
+	Trying rule: 2900 - Dpkg (Debian Package) log.
+	Trying rule: 2930 - Yum logs.
+	Trying rule: 2931 - Yum logs.
+	Trying rule: 2940 - NetworkManager grouping.
+	Trying rule: 2943 - nouveau driver grouping.
+	Trying rule: 2962 - Perdition custom app group.
+	Trying rule: 3100 - Grouping of the sendmail rules.
+	Trying rule: 3190 - Grouping of the smf-sav sendmail milter rules.
+	Trying rule: 3300 - Grouping of the postfix reject rules.
+	Trying rule: 3320 - Grouping of the postfix rules.
+	Trying rule: 3390 - Grouping of the clamsmtpd rules.
+	Trying rule: 3395 - Grouping of the postfix warning rules.
+	Trying rule: 3500 - Grouping for the spamd rules
+	Trying rule: 3600 - Grouping of the imapd rules.
+	Trying rule: 3700 - Grouping of mailscanner rules.
+	Trying rule: 3800 - Grouping of Exchange rules.
+	Trying rule: 3900 - Grouping for the courier rules.
+	Trying rule: 4500 - Grouping for the Netscreen Firewall rules
+	Trying rule: 4700 - Grouping of Cisco IOS rules
+	Trying rule: 4800 - SonicWall messages grouped.
+	Trying rule: 5500 - Grouping of the pam_unix rules.
+	Trying rule: 5556 - unix_chkpwd grouping.
+	Trying rule: 5600 - Grouping for the telnetd rules
+	Trying rule: 5700 - SSHD messages grouped.
+	Trying rule: 6100 - Solaris BSM Auditing messages grouped.
+	Trying rule: 6200 - Asterisk messages grouped.
+	Trying rule: 6300 - Grouping for the MS-DHCP ipv4 rules.
+	Trying rule: 6350 - Grouping for the MS-DHCP ipv6 rules.
+	Trying rule: 7200 - Arpwatch messages grouped.
+	Trying rule: 7300 - Grouping of Symantec AV rules.
+	Trying rule: 7400 - Grouping of Symantec Web Security rules.
+	Trying rule: 7600 - Grouping of Trend OSCE rules.
+	Trying rule: 9300 - Grouping for the Horde imp rules.
+	Trying rule: 9400 - Roundcube messages grouped.
+	Trying rule: 9500 - Wordpress messages grouped.
+	Trying rule: 9600 - cimserver messages grouped.
+	Trying rule: 9700 - Dovecot Messages Grouped.
+	Trying rule: 9770 - dovecot-info grouping.
+	Trying rule: 9800 - Grouping for the vm-pop3d rules.
+	Trying rule: 9900 - Grouping for the vpopmail rules.
+	Trying rule: 11100 - Grouping for the ftpd rules.
+	Trying rule: 11200 - Grouping for the proftpd rules.
+	Trying rule: 11300 - Grouping for the pure-ftpd rules.
+	Trying rule: 11310 - Rule grouping for pure ftpd transfers.
+	Trying rule: 11400 - Grouping for the vsftpd rules.
+	Trying rule: 11500 - Grouping for the Microsoft ftp rules.
+	Trying rule: 12100 - Grouping of the named rules
+	Trying rule: 13100 - Grouping for the smbd rules.
+	Trying rule: 13106 - Grouping for the nmbd rules.
+	Trying rule: 14100 - Grouping of racoon rules.
+	Trying rule: 14200 - Grouping of Cisco VPN concentrator rules
+	Trying rule: 19100 - VMWare messages grouped.
+	Trying rule: 19101 - VMWare ESX syslog messages grouped.
+	Trying rule: 30100 - Apache: Messages grouped.
+	Trying rule: 31200 - Grouping of Zeus rules.
+	Trying rule: 31300 - Nginx messages grouped.
+	Trying rule: 31404 - PHP Warning message.
+	Trying rule: 31405 - PHP Fatal error.
+	Trying rule: 31406 - PHP Parse error.
+	Trying rule: 40700 - Systemd rules
+	Trying rule: 40900 - firewalld grouping
+	Trying rule: 50100 - MySQL messages grouped.
+	Trying rule: 50500 - PostgreSQL messages grouped.
+	Trying rule: 51000 - Grouping for dropbear rules.
+	Trying rule: 51500 - Grouping of bsd_kernel alerts
+	Trying rule: 51521 - Grouping for groupdel rules.
+	Trying rule: 51523 - No core dumps.
+	Trying rule: 51525 - ftp-proxy cannot connect to a server.
+	Trying rule: 51526 - Hard drive is dying.
+	Trying rule: 51527 - CARP master to backup.
+	Trying rule: 51528 - Duplicate IPv6 address.
+	Trying rule: 51529 - Could not load a firmware.
+	Trying rule: 51530 - hotplugd could not open a file.
+	Trying rule: 51532 - Bad ntp peer.
+	Trying rule: 51550 - doas grouping
+	Trying rule: 52500 - Clamd messages grouped.
+	Trying rule: 52501 - ClamAV: database update
+	Trying rule: 53500 - OpenSMTPd grouping.
+	Trying rule: 500000 - Unbound grouping.
+	Trying rule: 80000 - Puppet Master messages grouped.
+	Trying rule: 80001 - Puppet Agent messages grouped.
+	Trying rule: 80100 - Netscaler messages grouped.
+	Trying rule: 80200 - AWS alert.
+	Trying rule: 80500 - Serv-u messages grouped.
+	Trying rule: 80700 - Audit: Messages grouped.
+	Trying rule: 81100 - USB messages grouped.
+	Trying rule: 81300 - Redis messages grouped.
+	Trying rule: 81400 - OpenSCAP messages grouped.
+	Trying rule: 44400 - FortiNet Rules.
+	Trying rule: 81600 - Fortigate v3 messages grouped.
+	Trying rule: 81601 - Fortigate v4 messages grouped.
+	Trying rule: 81602 - Fortigate v5 messages grouped.
+	Trying rule: 81641 - Fortigate v6 messages grouped.
+	Trying rule: 44640 - FortiMail Rules.
+	Trying rule: 44698 - FortiMail: System Event System log messages.
+	Trying rule: 44730 - Alert from Forti Authenticator.
+	Trying rule: 81700 - HP 5500 EI messages grouped.
+	Trying rule: 81800 - OpenVPN messages grouped.
+	Trying rule: 81900 - RSA Authentication Manager messages grouped.
+	Trying rule: 82000 - Imperva messages grouped.
+	Trying rule: 82100 - Sophos alerts.
+	Trying rule: 64270 - savscan category
+	Trying rule: 64274 - Update category
+	Trying rule: 82200 - FreeIPA syslog.
+	Trying rule: 82400 - Cisco eStreamer messages grouped.
+	Trying rule: 85000 - SQL Server messages.
+	Trying rule: 85500 - Identity Guard Log.
+	Trying rule: 85750 - MongoDB messages
+	Trying rule: 86000 - Docker messages
+	Trying rule: 86250 - Jenkins messages
+	Trying rule: 86800 - VShell message grouped.
+	Trying rule: 86600 - Suricata messages.
+	Trying rule: 86900 - Qualysguard messages grouped.
+	Trying rule: 87000 - Cylance events messages grouped.
+	Trying rule: 87050 - Cylance threats messages grouped.
+	Trying rule: 87100 - VirusTotal integration messages.
+	Trying rule: 87200 - pvedaemon messages grouped.
+	Trying rule: 87300 - ownCloud messages grouped.
+	Trying rule: 87310 - ownCloud messages grouped.
+	Trying rule: 22401 - Vuls integration event.
+	Trying rule: 87402 - CIS-CAT events.
+	Trying rule: 87403 - Old CIS-CAT events.
+	Trying rule: 87500 - Exim: SMTP Messages Grouped.
+	Trying rule: 87501 - dovecot messages grouped.
+	Trying rule: 23501 - $(vulnerability.cve) affects $(vulnerability.package.name)
+	Trying rule: 87600 - OpenVAS (gsad) messages grouped.
+	Trying rule: 87608 - OpenVAS (openvasmd) messages grouped.
+	Trying rule: 88000 - Percona Server audit events grouped.
+	Trying rule: 89050 - McAfee AUDIT Plugin for MySQL events grouped.
+	Trying rule: 88100 - MariaDB group messages.
+	Trying rule: 87700 - pfSense firewall rules grouped.
+	Trying rule: 87900 - Docker alerts: $(docker.Type)
+	Trying rule: 64000 - Grouping of cisco-ASA rules
+	Trying rule: 65500 - Mcafee EPO2
+	Trying rule: 88200 - NextCloud messages grouped.
+	Trying rule: 88201 - NextCloud messages grouped.
+	Trying rule: 67100 - Junos IDS
+	Trying rule: 67102 - Junos RT Flow
+	Trying rule: 64200 - PANDA Antivirus event.
+	Trying rule: 64220 - Checkpoint events.
+	Trying rule: 65000 - GCP alert.
+	Trying rule: 65260 - F5 Networks BigIP events
+	Trying rule: 65293 - F5 BigIP CEF decoded grouped alerts
+	Trying rule: 64500 - Palo Alto $(type) event.
+	Trying rule: 70020 - Sophos XG210 Firewall event
+	Trying rule: 70000 -  FreePBX parent 
+	Trying rule: 91100 - GitHub alert.
+	Trying rule: 91531 - Office 365: $(office365.Workload) $(office365.Operation) operation.
+	Trying rule: 88800 - Arbor
+	Trying rule: 150100 - FireEye
+	Trying rule: 89200 - Grouping of Huawei USG rules.
+	Trying rule: 91500 - cisco-ftd rules
+	Trying rule: 42001 - ESET console logs.
+	Trying rule: 92501 - Cloudflare WAF rules
+	Trying rule: 99000 - Amazon Security Lake rules grouped.
+	Trying rule: 99500 - MS Graph message: Microsoft graph messages grouped.
+	Trying rule: 100300 - Eslabon v2: event from events.jsonl
+		*Rule 100300 matched
+		*Trying child rules
+	Trying rule: 100306 - Eslabon v2: ESL-006 $(rule.name) package $(package.name) $(package.version) (OSV MAL advisory)
+	Trying rule: 100303 - Eslabon v2: ESL-003 $(rule.name) in package $(package.name) ($(eslabon.evidence.file))
+		*Rule 100303 matched
+
+**Phase 3: Completed filtering (rules).
+	id: '100303'
+	level: '12'
+	description: 'Eslabon v2: ESL-003 encoded-exec in package demo (demo-0.0.1/setup.py)'
+	groups: '['eslabon_v2', 'eslabon_v2', 'supply_chain']'
+	firedtimes: '1'
+	mail: 'True'
+	mitre.id: '['T1027.013', 'T1140']'
+	mitre.tactic: '['Defense Evasion']'
+	mitre.technique: '['Deobfuscate/Decode Files or Information']'
+**Alert to be generated.
+

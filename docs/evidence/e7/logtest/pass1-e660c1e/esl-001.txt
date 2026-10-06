@@ -1,0 +1,54 @@
+Starting wazuh-logtest v4.14.0
+Type one log per line
+
+
+**Phase 1: Completed pre-decoding.
+	full event: '{"@timestamp":"2026-10-06T18:33:16.847Z","ecs":{"version":"9.5.0"},"event":{"kind":"alert","module":"eslabon","dataset":"eslabon.finding","category":["package","malware"],"type":["info"],"severity":8},"package":{"name":"pkg","version":"1.0"},"file":{"hash":{"sha256":"c64c316db5584bcc71dc92174fa7cdf472deaf07d4a30aa597ae36aabff19747"}},"eslabon":{"schema_version":"1.0","attack_version":"19.2","ecosystem":"pypi","scan_id":"74481af16d7342fbbccba4f2b8b6b121","evidence":{"file":"pkg-1.0/setup.py","line":1,"snippet":"<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>","name_hex":"706b672d312e302f73657475702e7079","match_count":2},"mitigation":{"action":"Install with --no-build-isolation reviewed sdists only; prefer wheels (no setup.py runs) and block egress from build hosts.","residual_gap":"Does not flag setup.py that fetches or runs code via indirect means (e.g. a helper module); only direct network or download-tool use is seen.","detect":"Process and network telemetry from pip/python during install (child curl, wget, powershell, outbound connections)."}},"rule":{"id":"ESL-001","name":"pypi-install-exec","ruleset":"eslabon","version":"0.1.0"},"threat":{"framework":"MITRE ATT&CK","technique":{"id":["T1546.016","T1059.006"],"name":["Installer Packages","Python"]},"tactic":{"id":["TA0003","TA0004","TA0002"],"name":["Persistence","Privilege Escalation","Execution"]}}}'
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	@timestamp: '2026-10-06T18:33:16.847Z'
+	ecs.version: '9.5.0'
+	eslabon.attack_version: '19.2'
+	eslabon.ecosystem: 'pypi'
+	eslabon.evidence.file: 'pkg-1.0/setup.py'
+	eslabon.evidence.line: '1'
+	eslabon.evidence.match_count: '2'
+	eslabon.evidence.name_hex: '706b672d312e302f73657475702e7079'
+	eslabon.evidence.snippet: '<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>'
+	eslabon.mitigation.action: 'Install with --no-build-isolation reviewed sdists only; prefer wheels (no setup.py runs) and block egress from build hosts.'
+	eslabon.mitigation.detect: 'Process and network telemetry from pip/python during install (child curl, wget, powershell, outbound connections).'
+	eslabon.mitigation.residual_gap: 'Does not flag setup.py that fetches or runs code via indirect means (e.g. a helper module); only direct network or download-tool use is seen.'
+	eslabon.scan_id: '74481af16d7342fbbccba4f2b8b6b121'
+	eslabon.schema_version: '1.0'
+	event.category: '['package', 'malware']'
+	event.dataset: 'eslabon.finding'
+	event.kind: 'alert'
+	event.module: 'eslabon'
+	event.severity: '8'
+	event.type: '['info']'
+	file.hash.sha256: 'c64c316db5584bcc71dc92174fa7cdf472deaf07d4a30aa597ae36aabff19747'
+	package.name: 'pkg'
+	package.version: '1.0'
+	rule.id: 'ESL-001'
+	rule.name: 'pypi-install-exec'
+	rule.ruleset: 'eslabon'
+	rule.version: '0.1.0'
+	threat.framework: 'MITRE ATT&CK'
+	threat.tactic.id: '['TA0003', 'TA0004', 'TA0002']'
+	threat.tactic.name: '['Persistence', 'Privilege Escalation', 'Execution']'
+	threat.technique.id: '['T1546.016', 'T1059.006']'
+	threat.technique.name: '['Installer Packages', 'Python']'
+
+**Phase 3: Completed filtering (rules).
+	id: '100301'
+	level: '11'
+	description: 'Eslabon v2: ESL-001 pypi-install-exec in package pkg (pkg-1.0/setup.py)'
+	groups: '['eslabon_v2', 'eslabon_v2', 'supply_chain']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1546.016', 'T1059.006']'
+	mitre.tactic: '['Privilege Escalation', 'Persistence', 'Execution']'
+	mitre.technique: '['Installer Packages', 'Python']'
+**Alert to be generated.
+

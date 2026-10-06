@@ -1,0 +1,34 @@
+# Kali, scanner 7b981f9 (git archive sha256 a23a10c8282046b4e06bbb6e2bf1e5a2c6b5276e3aa95a32b254b0762fa554e9). Command:
+#   ~/eslabon/.venv/bin/python build_e7_fixtures.py --repo ~/eslabon --out ~/e7/fixtures && bash run_e7_scans.sh
+# Fixture sha256 prefixes identical to pass 1 (deterministic builders).
+# "lines before: 2" = the two BOM-experiment lines already in the rotated file.
+2026-10-06T20:02:02Z
+lines before: 2
++ eslabon scan /home/kali/e7/fixtures/esl001/pkg-1.0.tar.gz --ecosystem pypi --offline
+  exit=1
++ eslabon scan /home/kali/e7/fixtures/esl002/demo-1.0.0.tgz --ecosystem npm --offline
+  exit=1
++ eslabon scan /home/kali/e7/fixtures/esl003/demo-0.0.1.tar.gz --ecosystem pypi --offline
+  exit=1
++ eslabon scan /home/kali/e7/fixtures/esl004/demo-1.0.0.tgz --ecosystem npm --offline
+  exit=1
++ eslabon scan /home/kali/e7/fixtures/esl005/reqeusts-1.0.tar.gz --ecosystem pypi --offline
+  exit=1
++ eslabon scan /home/kali/e7/fixtures/esl006/paypalize-1.0.0.tgz --ecosystem npm
+  exit=1
++ eslabon scan /home/kali/e7/fixtures/clean/left-pad-1.0.0.tgz --ecosystem npm --offline
+  exit=0
++ eslabon scan /home/kali/e7/fixtures/incomplete/pkg-1.0-py3-none-any.whl --offline
+  exit=2
+lines after: 16 (new: 14)
+generated lines: 14 max bytes: 1477
+  eslabon.finding  ESL-001                1
+  eslabon.finding  ESL-002                1
+  eslabon.finding  ESL-003                1
+  eslabon.finding  ESL-004                1
+  eslabon.finding  ESL-005                1
+  eslabon.finding  ESL-006                1
+  eslabon.scan     status=incomplete      1
+  eslabon.scan     status=ok              7
+scan_ids (8): 636f64f3341f41849d0e51aba3c76ad9 50313b9f8a6046ce8fe404b51f6f0e29 2b5e8cea47b1475197ebe0aca5f30217 6399c0e41fbd4feb83b0f21ad4e2ff90 a0370e427c68431c85ae9e9b591ee480 3f1f3847544040deb184352a7fc82b13 57d71c3a32e74276a2384eaa09e1f808 aa87d78f38a24143a49aa4abbc173c9c
+2026-10-06T20:02:10Z

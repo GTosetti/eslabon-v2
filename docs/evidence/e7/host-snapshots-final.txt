@@ -1,0 +1,30 @@
+# host, 2026-10-06T20:38:29Z: VBoxManage list runningvms / showvminfo / snapshot list after the final restore
+# runningvms: []
+== kali-linux-2026.2-virtualbox-amd64
+VMState="poweroff"
+CurrentSnapshotName="pre-eslabon-v2"
+SnapshotName="pre-eslabon-v2"
+SnapshotUUID="7de9fe6a-adc9-414d-9d1f-0ddd91f280dd"
+SnapshotDescription="Before Eslabon v2 E7 lab (2026-10-06). Restore at clean-up."
+CurrentSnapshotName="pre-eslabon-v2"
+CurrentSnapshotUUID="7de9fe6a-adc9-414d-9d1f-0ddd91f280dd"
+CurrentSnapshotNode="SnapshotName"
+== Wazuh
+VMState="poweroff"
+CurrentSnapshotName="base-vd-off"
+SnapshotName="pre-eslabon-v2"
+SnapshotUUID="b641753b-fe6d-46f7-b96c-3c303a62e2fe"
+SnapshotDescription="Before Eslabon v2 E7 lab (2026-10-06): before agent enrolment, rules file and logall_json."
+SnapshotName-1="base-vd-off"
+SnapshotUUID-1="0330175b-797f-421b-8678-56b6e7c6a51c"
+SnapshotDescription-1="Wazuh OVA 4.14.0 (rc2), cold snapshot 2026-10-06: disk had been 100% full (vulnerability-detection feed, vd_updater/tmp 13G). VD disabled (ossec.conf line 113, backup ossec.conf.pre-vdoff), temp emptied, services verified active. Clean point BEFORE Eslabon v2 E7; E7 clean-up restores THIS one. pre-eslabon-v2 holds the broken disk-full state."
+CurrentSnapshotName="base-vd-off"
+CurrentSnapshotUUID="0330175b-797f-421b-8678-56b6e7c6a51c"
+CurrentSnapshotNode="SnapshotName-1"
+#
+# Added after review: the machine settings files prove the current state equals the snapshot
+# (VirtualBox sets currentStateModified="true" as soon as the state diverges; only a restore resets it).
+# Command: grep -oE '<Machine [^>]*' <vm>.vbox | grep -oE '(name|currentSnapshot|currentStateModified)="[^"]*"' ; mtime of both .vbox = 2026-10-06T20:38:29Z (local 17:38:29),
+# i.e. the final restore, after the probe file was installed at 20:35:07Z (probes.txt).
+name="Wazuh" currentSnapshot="{0330175b-797f-421b-8678-56b6e7c6a51c}" currentStateModified="false" 
+name="kali-linux-2026.2-virtualbox-amd64" currentSnapshot="{7de9fe6a-adc9-414d-9d1f-0ddd91f280dd}" currentStateModified="false" 

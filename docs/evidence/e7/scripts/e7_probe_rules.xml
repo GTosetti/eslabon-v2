@@ -1,0 +1,23 @@
+<!-- E7 throwaway probes (design section 11). Installed only on a snapshot that is
+     restored afterwards. Siblings are tried highest level first. -->
+<group name="e7_probe,">
+  <rule id="100397" level="5">
+    <decoded_as>json</decoded_as>
+    <location>events.jsonl$</location>
+    <field name="threat.technique.id" type="pcre2">^T1140$</field>
+    <description>E7 probe: anchored ^T1140$ matched the array field</description>
+  </rule>
+  <rule id="100396" level="4">
+    <decoded_as>json</decoded_as>
+    <location>events.jsonl$</location>
+    <field name="threat.technique.id" type="pcre2">T1140</field>
+    <description>E7 probe: unanchored T1140 matched the array field</description>
+  </rule>
+  <rule id="100395" level="3">
+    <decoded_as>json</decoded_as>
+    <location>events.jsonl$</location>
+    <field name="event.module" type="pcre2">^e7probe$</field>
+    <field name="eslabon.scan.status" type="pcre2" negate="yes">^ok$</field>
+    <description>E7 probe: negate matched although eslabon.scan.status is absent</description>
+  </rule>
+</group>

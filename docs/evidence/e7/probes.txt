@@ -1,0 +1,18 @@
+# sh /tmp/e7_probe_samples.sh  (run 2026-10-06T20:35:07Z); probe rules = docs/evidence/e7/scripts/e7_probe_rules.xml
+# installed probe file:
+total 8
+-rw-rw----. 1 wazuh wazuh 1059 Oct  6 20:35 e7_probe_rules.xml
+-rw-rw----. 1 wazuh wazuh  497 Oct 17  2025 local_rules.xml
+analysisd -t OK
+active
+== probe ARR: {"event":{"module":"e7probe"},"threat":{"technique":{"id":["T1027.013","T1140"]}}}
+	threat.technique.id: '['T1027.013', 'T1140']'
+	id: '100396'
+	description: 'E7 probe: unanchored T1140 matched the array field'
+**Alert to be generated.
+== probe ABS: {"event":{"module":"e7probe","dataset":"eslabon.scan"},"eslabon":{"scan_id":"probe"}}
+== probe PRES: {"event":{"module":"e7probe","dataset":"eslabon.scan"},"eslabon":{"scan":{"status":"incomplete"}}}
+	eslabon.scan.status: 'incomplete'
+	id: '100395'
+	description: 'E7 probe: negate matched although eslabon.scan.status is absent'
+**Alert to be generated.

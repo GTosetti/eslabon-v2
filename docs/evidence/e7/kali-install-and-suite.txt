@@ -1,0 +1,25 @@
+# TRANSCRIPTION of controller session output on Kali (scanner e660c1e, first install).
+# Kali was restored afterwards, so this cannot be regenerated from the VM; rerun the
+# commands on a fresh Kali to reproduce.
+#
+# $ sha256sum eslabon-e660c1e.tar     (git archive --format=tar --prefix=eslabon/ HEAD at e660c1e)
+1abfc66f326a807426a5eab3b14c72662b69946ec6816f8d847a22bf71709b2c  eslabon-e660c1e.tar
+# $ python3 -m venv .venv && .venv/bin/python -m pip install -e ".[dev]" | grep -E "Successfully|yara|ERROR"
+Collecting yara-python==4.5.4 (from eslabon==0.1.0)
+  Downloading yara_python-4.5.4-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl.metadata (2.8 kB)
+Downloading yara_python-4.5.4-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl (2.3 MB)
+Successfully built eslabon
+Successfully installed attrs-26.1.0 eslabon-0.1.0 iniconfig-2.3.0 jsonschema-4.26.0 jsonschema-specifications-2025.9.1 packaging-26.3 pluggy-1.6.0 pygments-2.21.0 pytest-9.1.1 referencing-0.37.0 rpds-py-2026.9.1 ruff-0.16.10 yara-python-4.5.4
+# $ .venv/bin/python -c "import yara,sys; print(sys.version.split()[0], yara.__version__)"
+3.13.12 4.5.4
+# $ .venv/bin/python -W error -m pytest -q -p no:cacheprovider | tail -1
+975 passed, 9 skipped, 3 deselected in 144.03s (0:02:24)
+# $ .venv/bin/python -m pytest -q -p no:cacheprovider -rs tests/test_fetch*.py | grep -E "SKIP|passed"
+SKIPPED [6] tests/test_fetch.py:1011: Windows path spellings
+SKIPPED [3] tests/test_fetch.py:1035: Windows path spellings
+99 passed, 9 skipped, 2 deselected in 3.01s
+#
+# Pass 2 (scanner 7b981f9): sha256sum eslabon-7b981f9.tar on host and Kali:
+a23a10c8282046b4e06bbb6e2bf1e5a2c6b5276e3aa95a32b254b0762fa554e9
+# python -c "import eslabon.emit as e; print('MAX_LINE_BYTES', e.MAX_LINE_BYTES)"
+MAX_LINE_BYTES 65000

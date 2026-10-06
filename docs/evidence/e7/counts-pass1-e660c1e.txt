@@ -1,0 +1,28 @@
+# sudo /var/ossec/framework/python/bin/python3 count_e7.py <8 scan_ids> (run 2026-10-06T19:34:52Z)
+== archives.json (collected): total 14 unparsable 0
+  eslabon.finding ESL-001              location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.finding ESL-002              location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.finding ESL-003              location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.finding ESL-004              location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.finding ESL-005              location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.finding ESL-006              location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.scan status=incomplete       location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.scan status=ok               location=/var/log/eslabon/events.jsonl decoder=json  7
+== alerts.json (rules engine): total 14
+  rule.id=100301 level=11 data.rule.id=ESL-001  [eslabon.finding ESL-001]  1
+  rule.id=100302 level=11 data.rule.id=ESL-002  [eslabon.finding ESL-002]  1
+  rule.id=100303 level=12 data.rule.id=ESL-003  [eslabon.finding ESL-003]  1
+  rule.id=100304 level=12 data.rule.id=ESL-004  [eslabon.finding ESL-004]  1
+  rule.id=100305 level=7 data.rule.id=ESL-005  [eslabon.finding ESL-005]  1
+  rule.id=100306 level=13 data.rule.id=ESL-006  [eslabon.finding ESL-006]  1
+  rule.id=100310 level=3 data.rule.id=None  [eslabon.scan status=ok]  7
+  rule.id=100311 level=7 data.rule.id=None  [eslabon.scan status=incomplete]  1
+  sample 100303 rule.mitre: {"id": ["T1027.013", "T1140"], "tactic": ["Defense Evasion"], "technique": ["Deobfuscate/Decode Files or Information"]}
+  sample 100303 rule.groups: ['eslabon_v2', 'eslabon_v2', 'supply_chain']
+  sample 100303 data.rule: {"id": "ESL-003", "name": "encoded-exec", "ruleset": "eslabon", "version": "0.1.0"}
+  sample 100303 data.threat.technique: {"id": ["T1027.013", "T1140"], "name": ["Encrypted/Encoded File", "Deobfuscate/Decode Files or Information"]}
+  sample 100303 timestamp: 2026-10-06T19:23:21.137+0000 data.@timestamp: 2026-10-06T19:23:17.761Z
+== wazuh-alerts-* (index) query: {"size": 0, "track_total_hits": true, "query": {"bool": {"filter": [{"term": {"rule.groups": "eslabon_v2"}}, {"terms": {"data.eslabon.scan_id": ["101e4d395b8d4afcb0731949e211db1c", "666af61586c24a82a7d18fee435baca3", "6adca7e3f09c4cb9ba277118585abef7", "768d9f0a2edd46a987ac76e512ec6081", "90f818fef6af4e0cb5a8b02da61aefd2", "b8c45defd12946aa8d9ead5e6ffebb1c", "e130cd3af0814356aa1dcbc3c92b494f", "e88d4f311e2c44ca8a3c3275dc2b7ea1"]}}]}}, "aggs": {"wazuh_rule": {"terms": {"field": "rule.id", "size": 50}}, "esl_rule": {"terms": {"field": "data.rule.id", "size": 50}}}}
+  hits.total: {'value': 0, 'relation': 'eq'}
+  agg wazuh_rule: []
+  agg esl_rule: []

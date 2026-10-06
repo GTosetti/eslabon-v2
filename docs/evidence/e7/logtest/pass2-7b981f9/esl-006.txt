@@ -1,0 +1,54 @@
+Starting wazuh-logtest v4.14.0
+Type one log per line
+
+
+**Phase 1: Completed pre-decoding.
+	full event: '{"@timestamp":"2026-10-06T19:57:27.518Z","ecs":{"version":"9.5.0"},"event":{"kind":"alert","module":"eslabon","dataset":"eslabon.finding","category":["package","malware"],"type":["info"],"severity":10},"package":{"name":"paypalize","version":"1.0.0"},"eslabon":{"schema_version":"1.0","attack_version":"19.2","ecosystem":"npm","scan_id":"9388f540d0fc4fbf9f58c0c2b9b5e923","archive":{"sha256":"9496c74e4558c8c26c8f6dbaa378b884fda445a53fc0c03929bcbb76657a1a79"},"evidence":{"file":"<osv>","line":0,"snippet":"<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>","name_hex":"70617970616c697a65","match_count":1},"mitigation":{"action":"Block installs of versions with an OSV MAL advisory (pin + hash-lock dependencies, private mirror with malware screening).","residual_gap":"Only catches packages someone has already reported; a fresh malicious release is invisible.","detect":"Install-time process/network telemetry from package managers; pair with ESL-001..004."}},"rule":{"id":"ESL-006","name":"known-malicious","ruleset":"eslabon","version":"0.1.0"},"threat":{"framework":"MITRE ATT&CK","technique":{"id":["T1195.001"],"name":["Compromise Software Dependencies and Development Tools"]},"tactic":{"id":["TA0001"],"name":["Initial Access"]}}}'
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	@timestamp: '2026-10-06T19:57:27.518Z'
+	ecs.version: '9.5.0'
+	eslabon.archive.sha256: '9496c74e4558c8c26c8f6dbaa378b884fda445a53fc0c03929bcbb76657a1a79'
+	eslabon.attack_version: '19.2'
+	eslabon.ecosystem: 'npm'
+	eslabon.evidence.file: '<osv>'
+	eslabon.evidence.line: '0'
+	eslabon.evidence.match_count: '1'
+	eslabon.evidence.name_hex: '70617970616c697a65'
+	eslabon.evidence.snippet: '<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>'
+	eslabon.mitigation.action: 'Block installs of versions with an OSV MAL advisory (pin + hash-lock dependencies, private mirror with malware screening).'
+	eslabon.mitigation.detect: 'Install-time process/network telemetry from package managers; pair with ESL-001..004.'
+	eslabon.mitigation.residual_gap: 'Only catches packages someone has already reported; a fresh malicious release is invisible.'
+	eslabon.scan_id: '9388f540d0fc4fbf9f58c0c2b9b5e923'
+	eslabon.schema_version: '1.0'
+	event.category: '['package', 'malware']'
+	event.dataset: 'eslabon.finding'
+	event.kind: 'alert'
+	event.module: 'eslabon'
+	event.severity: '10'
+	event.type: '['info']'
+	package.name: 'paypalize'
+	package.version: '1.0.0'
+	rule.id: 'ESL-006'
+	rule.name: 'known-malicious'
+	rule.ruleset: 'eslabon'
+	rule.version: '0.1.0'
+	threat.framework: 'MITRE ATT&CK'
+	threat.tactic.id: '['TA0001']'
+	threat.tactic.name: '['Initial Access']'
+	threat.technique.id: '['T1195.001']'
+	threat.technique.name: '['Compromise Software Dependencies and Development Tools']'
+
+**Phase 3: Completed filtering (rules).
+	id: '100306'
+	level: '13'
+	description: 'Eslabon v2: ESL-006 known-malicious package paypalize 1.0.0 (OSV MAL advisory)'
+	groups: '['eslabon_v2', 'supply_chain', 'sigma']'
+	firedtimes: '1'
+	mail: 'True'
+	mitre.id: '['T1195.001']'
+	mitre.tactic: '['Initial Access']'
+	mitre.technique: '['Compromise Software Dependencies and Development Tools']'
+**Alert to be generated.
+

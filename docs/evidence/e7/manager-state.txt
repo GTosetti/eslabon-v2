@@ -1,0 +1,19 @@
+# grep Cannot index event /var/log/filebeat/filebeat | grep e7-d-big (field and reason only)
+immense term in field=\"data.eslabon.pad\"
+max_bytes_length_exceeded_exception","reason":"bytes can be at most 32766 in length; got 64780"
+# _template/wazuh dynamic_templates
+{"wazuh":{"mappings":{"dynamic_templates":[{"string_as_keyword":{"mapping":{"type":"keyword"},"match_mapping_type":"string"}}]}}}
+# _mapping data.file (pass 1 finding)
+{"wazuh":{"mappings":{"properties":{"data":{"properties":{"file":{"type":"keyword"}}}}}}}
+# agent_control -l
+
+Wazuh agent_control. List of available agents:
+   ID: 000, Name: wazuh-server (server), IP: 127.0.0.1, Active/Local
+   ID: 001, Name: kali-e7, IP: any, Active
+
+List of agentless devices:
+
+# wazuh-control info
+WAZUH_VERSION="v4.14.0"
+WAZUH_REVISION="rc2"
+WAZUH_TYPE="server"

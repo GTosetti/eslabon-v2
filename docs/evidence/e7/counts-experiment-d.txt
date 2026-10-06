@@ -1,0 +1,20 @@
+# experiment D: 65,000-byte line (new MAX_LINE_BYTES) + 2 sentinels, count_e7.py e7-d-* (run 2026-10-06T20:03:50Z)
+== archives.json (collected): total 3 unparsable 0
+  eslabon.scan status=ok               location=/var/log/eslabon/events.jsonl decoder=json  3
+== alerts.json (rules engine): total 3
+  rule.id=100310 level=3 data.rule.id=None  [eslabon.scan status=ok]  3
+  hits.total: {'value': 2, 'relation': 'eq'}
+  agg wazuh_rule: [('100310', 2)]
+  agg esl_rule: []
+e7-d-big   archives=1 alerts=1
+e7-d-s1    archives=1 alerts=1
+e7-d-s2    archives=1 alerts=1
+# NOTE: count_e7.py output above with its '== wazuh-alerts-* (index) query:' line filtered out by
+# `grep -v "index) query"`; the query is the same DSL as in counts-pass2 with terms
+# data.eslabon.scan_id = [e7-d-big, e7-d-s1, e7-d-s2]. Per-marker lines from:
+#   for t in e7-d-big e7-d-s1 e7-d-s2; do printf "%-10s archives=%s alerts=%s
+" $t \n#     $(sudo grep -c "\"$t\"" .../archives/archives.json) $(sudo grep -c "\"$t\"" .../alerts/alerts.json); done
+# Index per marker was not queried; hits.total 2 plus the filebeat rejection of e7-d-big
+# (manager-state.txt) identify the missing document.
+# Kali write (TRANSCRIPTION of session output):
+#   python3 exp_e7.py oversize 65000 e7-d  -> wrote [65000, 219, 219] bytes per line in one write

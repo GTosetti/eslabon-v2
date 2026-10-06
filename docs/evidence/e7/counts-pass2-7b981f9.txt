@@ -1,0 +1,30 @@
+# sudo /var/ossec/framework/python/bin/python3 count_e7.py <8 pass-2 scan_ids> (run 2026-10-06T20:02:59Z, scanner 7b981f9)
+== archives.json (collected): total 14 unparsable 0
+  eslabon.finding ESL-001              location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.finding ESL-002              location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.finding ESL-003              location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.finding ESL-004              location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.finding ESL-005              location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.finding ESL-006              location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.scan status=incomplete       location=/var/log/eslabon/events.jsonl decoder=json  1
+  eslabon.scan status=ok               location=/var/log/eslabon/events.jsonl decoder=json  7
+== alerts.json (rules engine): total 14
+  rule.id=100301 level=11 data.rule.id=ESL-001  [eslabon.finding ESL-001]  1
+  rule.id=100302 level=11 data.rule.id=ESL-002  [eslabon.finding ESL-002]  1
+  rule.id=100303 level=12 data.rule.id=ESL-003  [eslabon.finding ESL-003]  1
+  rule.id=100304 level=12 data.rule.id=ESL-004  [eslabon.finding ESL-004]  1
+  rule.id=100305 level=7 data.rule.id=ESL-005  [eslabon.finding ESL-005]  1
+  rule.id=100306 level=13 data.rule.id=ESL-006  [eslabon.finding ESL-006]  1
+  rule.id=100310 level=3 data.rule.id=None  [eslabon.scan status=ok]  7
+  rule.id=100311 level=7 data.rule.id=None  [eslabon.scan status=incomplete]  1
+  sample 100303 rule.mitre: {"id": ["T1027", "T1140"], "tactic": ["Defense Evasion"], "technique": ["Obfuscated Files or Information", "Deobfuscate/Decode Files or Information"]}
+  sample 100303 rule.groups: ['eslabon_v2', 'supply_chain']
+  sample 100303 data.rule: {"id": "ESL-003", "name": "encoded-exec", "ruleset": "eslabon", "version": "0.1.0"}
+  sample 100303 data.threat.technique: {"id": ["T1027.013", "T1140"], "name": ["Encrypted/Encoded File", "Deobfuscate/Decode Files or Information"]}
+  sample 100303 timestamp: 2026-10-06T20:02:09.024+0000 data.@timestamp: 2026-10-06T20:02:05.663Z
+== wazuh-alerts-* (index) query: {"size": 0, "track_total_hits": true, "query": {"bool": {"filter": [{"term": {"rule.groups": "eslabon_v2"}}, {"terms": {"data.eslabon.scan_id": ["2b5e8cea47b1475197ebe0aca5f30217", "3f1f3847544040deb184352a7fc82b13", "50313b9f8a6046ce8fe404b51f6f0e29", "57d71c3a32e74276a2384eaa09e1f808", "636f64f3341f41849d0e51aba3c76ad9", "6399c0e41fbd4feb83b0f21ad4e2ff90", "a0370e427c68431c85ae9e9b591ee480", "aa87d78f38a24143a49aa4abbc173c9c"]}}]}}, "aggs": {"wazuh_rule": {"terms": {"field": "rule.id", "size": 50}}, "esl_rule": {"terms": {"field": "data.rule.id", "size": 50}}}}
+  hits.total: {'value': 14, 'relation': 'eq'}
+  agg wazuh_rule: [('100310', 7), ('100301', 1), ('100302', 1), ('100303', 1), ('100304', 1), ('100305', 1), ('100306', 1), ('100311', 1)]
+  agg esl_rule: [('ESL-001', 1), ('ESL-002', 1), ('ESL-003', 1), ('ESL-004', 1), ('ESL-005', 1), ('ESL-006', 1)]
+# filebeat Cannot index event lines after 2026-10-06T20:00 (pass 2):
+0

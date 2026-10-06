@@ -1,0 +1,54 @@
+Starting wazuh-logtest v4.14.0
+Type one log per line
+
+
+**Phase 1: Completed pre-decoding.
+	full event: '{"@timestamp":"2026-10-06T18:33:18.735Z","ecs":{"version":"9.5.0"},"event":{"kind":"alert","module":"eslabon","dataset":"eslabon.finding","category":["package","malware"],"type":["info"],"severity":5},"package":{"name":"reqeusts","version":"1.0"},"file":{"hash":{"sha256":"8fd47645a197d67bdee6e5a2715ba398a02af4d270fb5dc0c1614a3d74f0cbf2"}},"eslabon":{"schema_version":"1.0","attack_version":"19.2","ecosystem":"pypi","scan_id":"4cd73ebd5f964db19a77f5bec5991133","evidence":{"file":"reqeusts","line":0,"snippet":"<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>","name_hex":"7265716575737473","match_count":1},"mitigation":{"action":"Pin exact names and hashes in lockfiles; use a private mirror or allow-list of approved packages.","residual_gap":"Misses typosquats of packages outside the top 1,000, and is a weak signal alone.","detect":"New or unfamiliar package names in install logs and lockfile diffs; pair with ESL-001..004."}},"rule":{"id":"ESL-005","name":"typosquat","ruleset":"eslabon","version":"0.1.0"},"threat":{"framework":"MITRE ATT&CK","technique":{"id":["T1195.001"],"name":["Compromise Software Dependencies and Development Tools"]},"tactic":{"id":["TA0001"],"name":["Initial Access"]}}}'
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	@timestamp: '2026-10-06T18:33:18.735Z'
+	ecs.version: '9.5.0'
+	eslabon.attack_version: '19.2'
+	eslabon.ecosystem: 'pypi'
+	eslabon.evidence.file: 'reqeusts'
+	eslabon.evidence.line: '0'
+	eslabon.evidence.match_count: '1'
+	eslabon.evidence.name_hex: '7265716575737473'
+	eslabon.evidence.snippet: '<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>'
+	eslabon.mitigation.action: 'Pin exact names and hashes in lockfiles; use a private mirror or allow-list of approved packages.'
+	eslabon.mitigation.detect: 'New or unfamiliar package names in install logs and lockfile diffs; pair with ESL-001..004.'
+	eslabon.mitigation.residual_gap: 'Misses typosquats of packages outside the top 1,000, and is a weak signal alone.'
+	eslabon.scan_id: '4cd73ebd5f964db19a77f5bec5991133'
+	eslabon.schema_version: '1.0'
+	event.category: '['package', 'malware']'
+	event.dataset: 'eslabon.finding'
+	event.kind: 'alert'
+	event.module: 'eslabon'
+	event.severity: '5'
+	event.type: '['info']'
+	file.hash.sha256: '8fd47645a197d67bdee6e5a2715ba398a02af4d270fb5dc0c1614a3d74f0cbf2'
+	package.name: 'reqeusts'
+	package.version: '1.0'
+	rule.id: 'ESL-005'
+	rule.name: 'typosquat'
+	rule.ruleset: 'eslabon'
+	rule.version: '0.1.0'
+	threat.framework: 'MITRE ATT&CK'
+	threat.tactic.id: '['TA0001']'
+	threat.tactic.name: '['Initial Access']'
+	threat.technique.id: '['T1195.001']'
+	threat.technique.name: '['Compromise Software Dependencies and Development Tools']'
+
+**Phase 3: Completed filtering (rules).
+	id: '100305'
+	level: '7'
+	description: 'Eslabon v2: ESL-005 typosquat in package reqeusts (reqeusts ~ requests (distance 1))'
+	groups: '['eslabon_v2', 'eslabon_v2', 'supply_chain']'
+	firedtimes: '1'
+	mail: 'False'
+	mitre.id: '['T1195.001']'
+	mitre.tactic: '['Initial Access']'
+	mitre.technique: '['Compromise Software Dependencies and Development Tools']'
+**Alert to be generated.
+

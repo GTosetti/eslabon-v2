@@ -1,0 +1,41 @@
+Starting wazuh-logtest v4.14.0
+Type one log per line
+
+
+**Phase 1: Completed pre-decoding.
+	full event: '{"@timestamp":"2026-10-06T19:57:28.254Z","ecs":{"version":"9.5.0"},"event":{"kind":"event","module":"eslabon","dataset":"eslabon.scan","outcome":"failure"},"package":{"name":"pkg","version":"1.0"},"eslabon":{"schema_version":"1.0","attack_version":"19.2","ecosystem":"pypi","scan_id":"b318994e2d9640edb7b2eaad1fcb4709","archive":{"sha256":"c95e896d0f8c00506a4e0c4a550c8a700f6edebd1ee97b2c0428cdb0a1b11fe5"},"scan":{"status":"incomplete","files_scanned":1,"bytes_read":46,"findings":0,"anomalies":1,"anomaly_kinds":["encrypted_member"],"osv_status":"ok","duration_ms":345},"identity_source":"metadata"}}'
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	@timestamp: '2026-10-06T19:57:28.254Z'
+	ecs.version: '9.5.0'
+	eslabon.archive.sha256: 'c95e896d0f8c00506a4e0c4a550c8a700f6edebd1ee97b2c0428cdb0a1b11fe5'
+	eslabon.attack_version: '19.2'
+	eslabon.ecosystem: 'pypi'
+	eslabon.identity_source: 'metadata'
+	eslabon.scan.anomalies: '1'
+	eslabon.scan.anomaly_kinds: '['encrypted_member']'
+	eslabon.scan.bytes_read: '46'
+	eslabon.scan.duration_ms: '345'
+	eslabon.scan.files_scanned: '1'
+	eslabon.scan.findings: '0'
+	eslabon.scan.osv_status: 'ok'
+	eslabon.scan.status: 'incomplete'
+	eslabon.scan_id: 'b318994e2d9640edb7b2eaad1fcb4709'
+	eslabon.schema_version: '1.0'
+	event.dataset: 'eslabon.scan'
+	event.kind: 'event'
+	event.module: 'eslabon'
+	event.outcome: 'failure'
+	package.name: 'pkg'
+	package.version: '1.0'
+
+**Phase 3: Completed filtering (rules).
+	id: '100311'
+	level: '7'
+	description: 'Eslabon v2: scan of pkg NOT complete, status incomplete'
+	groups: '['eslabon_v2', 'scan_summary']'
+	firedtimes: '1'
+	mail: 'False'
+**Alert to be generated.
+

@@ -1,0 +1,4 @@
+# Every file in pass1-e660c1e/ and pass2-7b981f9/ was produced on the manager with:
+#   sudo /var/ossec/bin/wazuh-logtest -l /var/log/eslabon/events.jsonl < <sample>.jsonl > <sample>.txt 2>&1
+# esl-003-verbose.txt adds -v. Samples: scripts/make_logtest_samples.py --out ~/e7/logtest on Kali,
+# at the scanner commit of each pass. Snippet values were redacted when copying into the repo.

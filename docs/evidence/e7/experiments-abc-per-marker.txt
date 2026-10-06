@@ -1,0 +1,27 @@
+# TRANSCRIPTION of controller session output (not a saved file): the per-marker loop
+# below printed to the terminal at about 2026-10-06T19:30Z, right after the experiments
+# (A written 19:28:53Z, B 19:29:13Z, C 19:29:33Z, from Kali `date -u`). The manager's
+# archives.json/alerts.json were later discarded by the snapshot restore, so this cannot
+# be regenerated. The index was NOT queried per marker (only the aggregate in
+# counts-experiments-abc.txt, hits.total 4), so per-marker indexing is not evidenced.
+#
+# Command (on the manager):
+#   for t in e7-a-big e7-a-s1 e7-a-s2 e7-b-big e7-b-s1 e7-b-s2 e7-c-1 e7-c-2; do
+#     printf "%-10s archives=%s alerts=%s\n" $t \
+#       $(sudo grep -c "\"$t\"" /var/ossec/logs/archives/archives.json) \
+#       $(sudo grep -c "\"$t\"" /var/ossec/logs/alerts/alerts.json)
+#   done
+e7-a-big   archives=0 alerts=0
+e7-a-s1    archives=1 alerts=1
+e7-a-s2    archives=0 alerts=0
+e7-b-big   archives=0 alerts=0
+e7-b-s1    archives=1 alerts=1
+e7-b-s2    archives=0 alerts=0
+e7-c-1     archives=1 alerts=1
+e7-c-2     archives=1 alerts=1
+#
+# Kali writes (scripts/exp_e7.py), transcribed:
+#   python3 exp_e7.py oversize 70000 e7-a  -> wrote [70000, 219, 219] bytes per line in one write
+#   python3 exp_e7.py oversize 65300 e7-b  -> wrote [65300, 219, 219] bytes per line in one write
+#   python3 exp_e7.py bom e7-c             -> rotated to /var/log/eslabon/events.jsonl.1 ; new file starts with b'\xef\xbb\xbf{'
+#   head -c 4 /var/log/eslabon/events.jsonl | od -An -tx1  ->  ef bb bf 7b

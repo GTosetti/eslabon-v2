@@ -1,0 +1,9 @@
+# count_e7.py <experiment markers> (run 2026-10-06T19:34:53Z)
+== archives.json (collected): total 4 unparsable 0
+  eslabon.scan status=ok               location=/var/log/eslabon/events.jsonl decoder=json  4
+== alerts.json (rules engine): total 4
+  rule.id=100310 level=3 data.rule.id=None  [eslabon.scan status=ok]  4
+== wazuh-alerts-* (index) query: {"size": 0, "track_total_hits": true, "query": {"bool": {"filter": [{"term": {"rule.groups": "eslabon_v2"}}, {"terms": {"data.eslabon.scan_id": ["e7-a-big", "e7-a-s1", "e7-a-s2", "e7-b-big", "e7-b-s1", "e7-b-s2", "e7-c-1", "e7-c-2"]}}]}}, "aggs": {"wazuh_rule": {"terms": {"field": "rule.id", "size": 50}}, "esl_rule": {"terms": {"field": "data.rule.id", "size": 50}}}}
+  hits.total: {'value': 4, 'relation': 'eq'}
+  agg wazuh_rule: [('100310', 4)]
+  agg esl_rule: []

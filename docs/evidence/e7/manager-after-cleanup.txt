@@ -1,0 +1,21 @@
+# manager after clean-up restore (base-vd-off), 2026-10-06T20:35:06Z
+# wc -l client.keys:
+0
+# ^ annotation: the first attempt failed (the redirection ran without sudo); value from
+#   sudo sh -c "wc -l < /var/ossec/etc/client.keys"   re-run at 2026-10-06T20:37:32Z
+# agent_control -l:
+
+Wazuh agent_control. List of available agents:
+   ID: 000, Name: wazuh-server (server), IP: 127.0.0.1, Active/Local
+
+List of agentless devices:
+
+# grep logall ossec.conf:
+11:    <logall>no</logall>
+12:    <logall_json>no</logall_json>
+# ls -l etc/rules/ (no eslabon_v2_rules.xml expected):
+total 4
+-rw-rw----. 1 wazuh wazuh 497 Oct 17  2025 local_rules.xml
+# vulnerability-detection:
+112:  <vulnerability-detection>
+113-    <enabled>no</enabled>

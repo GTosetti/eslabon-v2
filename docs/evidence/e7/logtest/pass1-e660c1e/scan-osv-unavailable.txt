@@ -1,0 +1,42 @@
+Starting wazuh-logtest v4.14.0
+Type one log per line
+
+
+**Phase 1: Completed pre-decoding.
+	full event: '{"@timestamp":"2026-10-06T18:33:20.475Z","ecs":{"version":"9.5.0"},"event":{"kind":"event","module":"eslabon","dataset":"eslabon.scan","outcome":"failure"},"package":{"name":"left-pad","version":"1.0.0"},"file":{"hash":{"sha256":"af41ee02b13c4eb716675b09356d48bb7f527591079698837a89aac2b84be6ec"}},"eslabon":{"schema_version":"1.0","attack_version":"19.2","ecosystem":"npm","scan_id":"916d9d7f5d62464b8856fe7d0396586d","scan":{"status":"osv_unavailable","files_scanned":2,"bytes_read":10240,"findings":0,"anomalies":0,"anomaly_kinds":[],"osv_status":"unavailable","duration_ms":377,"error":"osv unavailable: OSError"},"identity_source":"metadata"}}'
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	@timestamp: '2026-10-06T18:33:20.475Z'
+	ecs.version: '9.5.0'
+	eslabon.attack_version: '19.2'
+	eslabon.ecosystem: 'npm'
+	eslabon.identity_source: 'metadata'
+	eslabon.scan.anomalies: '0'
+	eslabon.scan.anomaly_kinds: '[]'
+	eslabon.scan.bytes_read: '10240'
+	eslabon.scan.duration_ms: '377'
+	eslabon.scan.error: 'osv unavailable: OSError'
+	eslabon.scan.files_scanned: '2'
+	eslabon.scan.findings: '0'
+	eslabon.scan.osv_status: 'unavailable'
+	eslabon.scan.status: 'osv_unavailable'
+	eslabon.scan_id: '916d9d7f5d62464b8856fe7d0396586d'
+	eslabon.schema_version: '1.0'
+	event.dataset: 'eslabon.scan'
+	event.kind: 'event'
+	event.module: 'eslabon'
+	event.outcome: 'failure'
+	file.hash.sha256: 'af41ee02b13c4eb716675b09356d48bb7f527591079698837a89aac2b84be6ec'
+	package.name: 'left-pad'
+	package.version: '1.0.0'
+
+**Phase 3: Completed filtering (rules).
+	id: '100311'
+	level: '7'
+	description: 'Eslabon v2: scan of left-pad NOT complete, status osv_unavailable'
+	groups: '['eslabon_v2', 'eslabon_v2', 'scan_summary']'
+	firedtimes: '1'
+	mail: 'False'
+**Alert to be generated.
+

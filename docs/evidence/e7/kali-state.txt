@@ -1,0 +1,26 @@
+# python3 --version
+Python 3.13.12
+# dpkg -l wazuh-agent ; apt-mark showhold
+hi  wazuh-agent    4.14.0-1     amd64        Wazuh agent
+# agent ossec.log: enrolment, file, connection, logcollector errors
+2026/10/06 15:17:41 wazuh-agentd: INFO: Requesting a key from server: 192.168.56.101
+2026/10/06 15:17:41 wazuh-agentd: INFO: Valid key received
+2026/10/06 15:17:42 wazuh-logcollector: INFO: (1950): Analyzing file: '/var/log/eslabon/events.jsonl'.
+2026/10/06 15:18:01 wazuh-agentd: INFO: (4102): Connected to the server ([192.168.56.101]:1514/tcp).
+2026/10/06 15:18:07 wazuh-logcollector: INFO: (1950): Analyzing file: '/var/log/eslabon/events.jsonl'.
+2026/10/06 15:20:48 wazuh-agentd: ERROR: (1137): Lost connection with manager. Setting lock.
+2026/10/06 15:20:48 wazuh-agentd: ERROR: (1216): Unable to connect to '[192.168.56.101]:1514/tcp': 'Transport endpoint is not connected'.
+2026/10/06 15:20:58 wazuh-agentd: ERROR: (1216): Unable to connect to '[192.168.56.101]:1514/tcp': 'Transport endpoint is not connected'.
+2026/10/06 15:21:08 wazuh-agentd: INFO: (4102): Connected to the server ([192.168.56.101]:1514/tcp).
+2026/10/06 15:28:53 wazuh-logcollector: ERROR: Large message size from file '/var/log/eslabon/events.jsonl' (length = 219): '{"@timestamp":"2026-10-06T19:28:53Z","event":{"module":"eslabon"'...
+2026/10/06 15:29:14 wazuh-logcollector: ERROR: Large message size from file '/var/log/eslabon/events.jsonl' (length = 219): '{"@timestamp":"2026-10-06T19:29:13Z","event":{"module":"eslabon"'...
+2026/10/06 15:59:36 wazuh-agentd: ERROR: (1137): Lost connection with manager. Setting lock.
+2026/10/06 15:59:36 wazuh-agentd: ERROR: (1216): Unable to connect to '[192.168.56.101]:1514/tcp': 'Transport endpoint is not connected'.
+2026/10/06 15:59:46 wazuh-agentd: ERROR: (1216): Unable to connect to '[192.168.56.101]:1514/tcp': 'Transport endpoint is not connected'.
+2026/10/06 15:59:56 wazuh-agentd: ERROR: (1216): Unable to connect to '[192.168.56.101]:1514/tcp': 'Transport endpoint is not connected'.
+2026/10/06 16:00:06 wazuh-agentd: INFO: (4102): Connected to the server ([192.168.56.101]:1514/tcp).
+# trimmed ossec.conf: localfile + client address
+10:      <address>192.168.56.101</address>
+169:    <log_format>plain</log_format>
+173:    <location>/var/log/eslabon/events.jsonl</location>
+174:    <log_format>json</log_format>

@@ -1,0 +1,54 @@
+Starting wazuh-logtest v4.14.0
+Type one log per line
+
+
+**Phase 1: Completed pre-decoding.
+	full event: '{"@timestamp":"2026-10-06T18:33:18.386Z","ecs":{"version":"9.5.0"},"event":{"kind":"alert","module":"eslabon","dataset":"eslabon.finding","category":["package","malware"],"type":["info"],"severity":9},"package":{"name":"demo","version":"1.0.0"},"file":{"hash":{"sha256":"b8527bf630b15af32aecde262cca838261e5e9df3af38417c59a8da5f7bb3ea0"}},"eslabon":{"schema_version":"1.0","attack_version":"19.2","ecosystem":"npm","scan_id":"6f83fdc699f445e981a152b1e09132c8","evidence":{"file":"index.js","line":2,"snippet":"<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>","name_hex":"7061636b6167652f696e6465782e6a73","match_count":2},"mitigation":{"action":"Keep credentials out of build and dev hosts (short-lived tokens, secret managers) and restrict egress to known registries.","residual_gap":"Misses exfiltration to an ordinary domain; only known sinks and public IP literals are matched.","detect":"Reads of ~/.ssh, ~/.aws, .npmrc, .pypirc by package-manager processes; outbound webhook, paste and tunnel domains."}},"rule":{"id":"ESL-004","name":"secret-exfil","ruleset":"eslabon","version":"0.1.0"},"threat":{"framework":"MITRE ATT&CK","technique":{"id":["T1552.001","T1041"],"name":["Credentials In Files","Exfiltration Over C2 Channel"]},"tactic":{"id":["TA0006","TA0010"],"name":["Credential Access","Exfiltration"]}}}'
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	@timestamp: '2026-10-06T18:33:18.386Z'
+	ecs.version: '9.5.0'
+	eslabon.attack_version: '19.2'
+	eslabon.ecosystem: 'npm'
+	eslabon.evidence.file: 'index.js'
+	eslabon.evidence.line: '2'
+	eslabon.evidence.match_count: '2'
+	eslabon.evidence.name_hex: '7061636b6167652f696e6465782e6a73'
+	eslabon.evidence.snippet: '<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>'
+	eslabon.mitigation.action: 'Keep credentials out of build and dev hosts (short-lived tokens, secret managers) and restrict egress to known registries.'
+	eslabon.mitigation.detect: 'Reads of ~/.ssh, ~/.aws, .npmrc, .pypirc by package-manager processes; outbound webhook, paste and tunnel domains.'
+	eslabon.mitigation.residual_gap: 'Misses exfiltration to an ordinary domain; only known sinks and public IP literals are matched.'
+	eslabon.scan_id: '6f83fdc699f445e981a152b1e09132c8'
+	eslabon.schema_version: '1.0'
+	event.category: '['package', 'malware']'
+	event.dataset: 'eslabon.finding'
+	event.kind: 'alert'
+	event.module: 'eslabon'
+	event.severity: '9'
+	event.type: '['info']'
+	file.hash.sha256: 'b8527bf630b15af32aecde262cca838261e5e9df3af38417c59a8da5f7bb3ea0'
+	package.name: 'demo'
+	package.version: '1.0.0'
+	rule.id: 'ESL-004'
+	rule.name: 'secret-exfil'
+	rule.ruleset: 'eslabon'
+	rule.version: '0.1.0'
+	threat.framework: 'MITRE ATT&CK'
+	threat.tactic.id: '['TA0006', 'TA0010']'
+	threat.tactic.name: '['Credential Access', 'Exfiltration']'
+	threat.technique.id: '['T1552.001', 'T1041']'
+	threat.technique.name: '['Credentials In Files', 'Exfiltration Over C2 Channel']'
+
+**Phase 3: Completed filtering (rules).
+	id: '100304'
+	level: '12'
+	description: 'Eslabon v2: ESL-004 secret-exfil in package demo (index.js)'
+	groups: '['eslabon_v2', 'eslabon_v2', 'supply_chain']'
+	firedtimes: '1'
+	mail: 'True'
+	mitre.id: '['T1552.001', 'T1041']'
+	mitre.tactic: '['Credential Access', 'Exfiltration']'
+	mitre.technique: '['Credentials In Files', 'Exfiltration Over C2 Channel']'
+**Alert to be generated.
+

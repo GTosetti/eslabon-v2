@@ -1,0 +1,41 @@
+# Kali, scanner e660c1e. Command:
+#   ~/eslabon/.venv/bin/python build_e7_fixtures.py --repo ~/eslabon --out ~/e7/fixtures && bash run_e7_scans.sh
+# (scripts in docs/evidence/e7/scripts/; fixture sha256 are deterministic and identical in pass 2)
+c64c316db5584bcc71dc92174fa7cdf472deaf07d4a30aa597ae36aabff19747 esl001/pkg-1.0.tar.gz
+3b01eb66e9dad034ef2b54ccb519dd60d12f54829999ae1baae2d14d382b564a esl002/demo-1.0.0.tgz
+3cfb28db0808f20f86d1bcfcbcae3456bb365f163d481b67825457e092f0256e esl003/demo-0.0.1.tar.gz
+b8527bf630b15af32aecde262cca838261e5e9df3af38417c59a8da5f7bb3ea0 esl004/demo-1.0.0.tgz
+8fd47645a197d67bdee6e5a2715ba398a02af4d270fb5dc0c1614a3d74f0cbf2 esl005/reqeusts-1.0.tar.gz
+9496c74e4558c8c26c8f6dbaa378b884fda445a53fc0c03929bcbb76657a1a79 esl006/paypalize-1.0.0.tgz
+af41ee02b13c4eb716675b09356d48bb7f527591079698837a89aac2b84be6ec clean/left-pad-1.0.0.tgz
+c95e896d0f8c00506a4e0c4a550c8a700f6edebd1ee97b2c0428cdb0a1b11fe5 incomplete/pkg-1.0-py3-none-any.whl
+2026-10-06T19:23:16Z
+lines before: 0
++ eslabon scan /home/kali/e7/fixtures/esl001/pkg-1.0.tar.gz --ecosystem pypi --offline
+  exit=1
++ eslabon scan /home/kali/e7/fixtures/esl002/demo-1.0.0.tgz --ecosystem npm --offline
+  exit=1
++ eslabon scan /home/kali/e7/fixtures/esl003/demo-0.0.1.tar.gz --ecosystem pypi --offline
+  exit=1
++ eslabon scan /home/kali/e7/fixtures/esl004/demo-1.0.0.tgz --ecosystem npm --offline
+  exit=1
++ eslabon scan /home/kali/e7/fixtures/esl005/reqeusts-1.0.tar.gz --ecosystem pypi --offline
+  exit=1
++ eslabon scan /home/kali/e7/fixtures/esl006/paypalize-1.0.0.tgz --ecosystem npm
+  exit=1
++ eslabon scan /home/kali/e7/fixtures/clean/left-pad-1.0.0.tgz --ecosystem npm --offline
+  exit=0
++ eslabon scan /home/kali/e7/fixtures/incomplete/pkg-1.0-py3-none-any.whl --offline
+  exit=2
+lines after: 14 (new: 14)
+generated lines: 14 max bytes: 1483
+  eslabon.finding  ESL-001                1
+  eslabon.finding  ESL-002                1
+  eslabon.finding  ESL-003                1
+  eslabon.finding  ESL-004                1
+  eslabon.finding  ESL-005                1
+  eslabon.finding  ESL-006                1
+  eslabon.scan     status=incomplete      1
+  eslabon.scan     status=ok              7
+scan_ids (8): e88d4f311e2c44ca8a3c3275dc2b7ea1 6adca7e3f09c4cb9ba277118585abef7 666af61586c24a82a7d18fee435baca3 90f818fef6af4e0cb5a8b02da61aefd2 e130cd3af0814356aa1dcbc3c92b494f 768d9f0a2edd46a987ac76e512ec6081 b8c45defd12946aa8d9ead5e6ffebb1c 101e4d395b8d4afcb0731949e211db1c
+2026-10-06T19:23:22Z

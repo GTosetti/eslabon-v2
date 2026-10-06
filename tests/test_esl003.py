@@ -327,6 +327,9 @@ _EXPECTED_HITS = {
     "src/eslabon/osv.py": {"esl001_py_network"},
     # name==version fetch: GETs the registry API and the archive with urllib
     "src/eslabon/fetch.py": {"esl001_py_network"},
+    # E7 lab evidence, kept byte-identical to what ran: queries the manager's
+    # local indexer (https://127.0.0.1:9200) with urllib, a real network call
+    "docs/evidence/e7/scripts/count_e7.py": {"esl001_py_network"},
 }
 
 

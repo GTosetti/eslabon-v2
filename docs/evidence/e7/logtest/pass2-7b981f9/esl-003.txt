@@ -1,0 +1,54 @@
+Starting wazuh-logtest v4.14.0
+Type one log per line
+
+
+**Phase 1: Completed pre-decoding.
+	full event: '{"@timestamp":"2026-10-06T19:57:26.428Z","ecs":{"version":"9.5.0"},"event":{"kind":"alert","module":"eslabon","dataset":"eslabon.finding","category":["package","malware"],"type":["info"],"severity":9},"package":{"name":"demo","version":"0.0.1"},"eslabon":{"schema_version":"1.0","attack_version":"19.2","ecosystem":"pypi","scan_id":"8c1a2ed385ac456f944275c0d88ddc81","archive":{"sha256":"3cfb28db0808f20f86d1bcfcbcae3456bb365f163d481b67825457e092f0256e"},"evidence":{"file":"demo-0.0.1/setup.py","line":4,"snippet":"<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>","name_hex":"64656d6f2d302e302e312f73657475702e7079","match_count":1},"mitigation":{"action":"Review or reject packages that decode and execute embedded payloads; sandbox first-run of unreviewed dependencies.","residual_gap":"Misses multi-stage decoding split across lines, so decoder and evaluator are not adjacent.","detect":"Interpreter processes spawning from package directories; dynamic code execution (eval/exec) of decoded data at runtime."}},"rule":{"id":"ESL-003","name":"encoded-exec","ruleset":"eslabon","version":"0.1.0"},"threat":{"framework":"MITRE ATT&CK","technique":{"id":["T1027.013","T1140"],"name":["Encrypted/Encoded File","Deobfuscate/Decode Files or Information"]},"tactic":{"id":["TA0005"],"name":["Stealth"]}}}'
+
+**Phase 2: Completed decoding.
+	name: 'json'
+	@timestamp: '2026-10-06T19:57:26.428Z'
+	ecs.version: '9.5.0'
+	eslabon.archive.sha256: '3cfb28db0808f20f86d1bcfcbcae3456bb365f163d481b67825457e092f0256e'
+	eslabon.attack_version: '19.2'
+	eslabon.ecosystem: 'pypi'
+	eslabon.evidence.file: 'demo-0.0.1/setup.py'
+	eslabon.evidence.line: '4'
+	eslabon.evidence.match_count: '1'
+	eslabon.evidence.name_hex: '64656d6f2d302e302e312f73657475702e7079'
+	eslabon.evidence.snippet: '<redacted: synthetic payload, regenerate with scripts/make_logtest_samples.py>'
+	eslabon.mitigation.action: 'Review or reject packages that decode and execute embedded payloads; sandbox first-run of unreviewed dependencies.'
+	eslabon.mitigation.detect: 'Interpreter processes spawning from package directories; dynamic code execution (eval/exec) of decoded data at runtime.'
+	eslabon.mitigation.residual_gap: 'Misses multi-stage decoding split across lines, so decoder and evaluator are not adjacent.'
+	eslabon.scan_id: '8c1a2ed385ac456f944275c0d88ddc81'
+	eslabon.schema_version: '1.0'
+	event.category: '['package', 'malware']'
+	event.dataset: 'eslabon.finding'
+	event.kind: 'alert'
+	event.module: 'eslabon'
+	event.severity: '9'
+	event.type: '['info']'
+	package.name: 'demo'
+	package.version: '0.0.1'
+	rule.id: 'ESL-003'
+	rule.name: 'encoded-exec'
+	rule.ruleset: 'eslabon'
+	rule.version: '0.1.0'
+	threat.framework: 'MITRE ATT&CK'
+	threat.tactic.id: '['TA0005']'
+	threat.tactic.name: '['Stealth']'
+	threat.technique.id: '['T1027.013', 'T1140']'
+	threat.technique.name: '['Encrypted/Encoded File', 'Deobfuscate/Decode Files or Information']'
+
+**Phase 3: Completed filtering (rules).
+	id: '100303'
+	level: '12'
+	description: 'Eslabon v2: ESL-003 encoded-exec in package demo (demo-0.0.1/setup.py)'
+	groups: '['eslabon_v2', 'supply_chain']'
+	firedtimes: '1'
+	mail: 'True'
+	mitre.id: '['T1027', 'T1140']'
+	mitre.tactic: '['Defense Evasion']'
+	mitre.technique: '['Obfuscated Files or Information', 'Deobfuscate/Decode Files or Information']'
+**Alert to be generated.
+
