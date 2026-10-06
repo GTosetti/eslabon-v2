@@ -45,6 +45,19 @@ def _no_osv_network(monkeypatch):
     monkeypatch.setattr(osv, "DEFAULT_OPENER", _blocked)
 
 
+@pytest.fixture(autouse=True)
+def _no_registry_network(monkeypatch):
+    """The same for the registry fetch (name==version): the real opener is
+    replaced by one that raises; tests install fake registries, and the
+    ``network`` tests pass the real opener explicitly."""
+    from eslabon import fetch
+
+    def _blocked(req, timeout):
+        raise AssertionError("network access to the registries is disabled in tests")
+
+    monkeypatch.setattr(fetch, "DEFAULT_OPENER", _blocked)
+
+
 @pytest.fixture
 def osv_clean(monkeypatch):
     """OSV answers every query with no advisories (a recorded empty ``{}``).

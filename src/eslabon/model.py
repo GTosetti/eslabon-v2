@@ -42,9 +42,12 @@ class Member:
 # package_json_too_deep (a root package.json nested too deep for Python's json,
 # which V8's iterative parser reads fine: its scripts went unchecked),
 # identity_mismatch (the metadata name and the name in the archive's file name
-# differ after normalisation; both are checked by ESL-005; added by the cli).
-# Only encrypted_member, unsupported_compression, bad_member and
-# package_json_too_deep mean "content not scanned" and make the status "incomplete".
+# differ after normalisation; both are checked by ESL-005; added by the cli),
+# no_identity (no package name from any source -- argument, metadata or file
+# name -- so ESL-005/006 could not run; added by the cli).
+# Only encrypted_member, unsupported_compression, bad_member,
+# package_json_too_deep and no_identity mean "content (or a rule) not checked"
+# and make the status "incomplete".
 @dataclass(frozen=True)
 class Anomaly:
     kind: str
@@ -76,11 +79,19 @@ class ScanContext:
     rules: yara.Rules | None  # None until the rule set exists (Task 9)
     limits: Limits
     pkg: PackageRef
-    # "sdist" | "wheel" | "npm"; "" when unknown (rules scoped to a kind stay off)
-    archive_kind: str = ""
+    # "sdist" | "wheel" | "npm". Required: a silent default would switch off the
+    # rules scoped to a kind (ESL-001 runs on sdists only).
+    archive_kind: str
     # Analysers append member-level anomalies here (e.g. bad_package_json);
     # scan.analyze_archive passes its own list.
     anomalies: list[Anomaly] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.archive_kind not in ARCHIVE_KINDS:
+            raise ValueError(f"unknown archive_kind: {self.archive_kind!r}")
+
+
+ARCHIVE_KINDS = frozenset({"sdist", "wheel", "npm"})
 
 
 @dataclass
@@ -115,4 +126,12 @@ class FetchError(Exception):
 
 
 class HashMismatch(Exception):
-    pass
+    """The downloaded bytes do not match the registry's published hash.
+
+    ``actual_sha256`` is the SHA-256 of what was actually received (for the
+    summary's file.hash), "" if unknown.
+    """
+
+    def __init__(self, message: str, actual_sha256: str = "") -> None:
+        super().__init__(message)
+        self.actual_sha256 = actual_sha256

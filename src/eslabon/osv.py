@@ -64,11 +64,18 @@ class _SafeRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
-def _read_capped(resp, cap: int) -> bytes:
-    """Read ``resp`` to the end, refusing more than ``cap`` bytes."""
+def _read_capped(resp, cap: int, deadline: float | None = None) -> bytes:
+    """Read ``resp`` to the end, refusing more than ``cap`` bytes or going on
+    past ``deadline`` (a ``_clock`` value; a server dribbling bytes just under
+    the socket timeout would otherwise hold the read open indefinitely)."""
     chunks: list[bytes] = []
     total = 0
-    while chunk := resp.read(_CHUNK):
+    while True:
+        if deadline is not None and _clock() >= deadline:
+            raise OsvError("osv deadline exceeded")
+        chunk = resp.read(_CHUNK)
+        if not chunk:
+            break
         total += len(chunk)
         if total > cap:
             raise OsvError("osv response too large")
@@ -94,10 +101,12 @@ def _request(url: str, data: bytes) -> urllib.request.Request:
 def urllib_opener(url: str, data: bytes, timeout: float) -> tuple[str, bytes]:
     """The real opener: HTTPS POST with a timeout, a size cap and safe redirects."""
     req = _request(url, data)
+    # ``timeout`` is already capped at what is left of the overall deadline
+    deadline = _clock() + timeout
     opener = urllib.request.build_opener(_SafeRedirect())
     with opener.open(req, timeout=timeout) as resp:
         final = resp.geturl()
-        body = _read_capped(resp, MAX_RESPONSE)
+        body = _read_capped(resp, MAX_RESPONSE, deadline)
     return final, body
 
 

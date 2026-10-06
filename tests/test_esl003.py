@@ -71,7 +71,12 @@ def _js_index() -> bytes:
 @pytest.fixture(scope="module")
 def ctx() -> ScanContext:
     pkg = PackageRef("demo", "0.0.1", "pypi", "")
-    return ScanContext(rules=yara_engine.compile_rules(), limits=Limits(), pkg=pkg)
+    return ScanContext(
+        rules=yara_engine.compile_rules(),
+        limits=Limits(),
+        pkg=pkg,
+        archive_kind="sdist",
+    )
 
 
 def _member(path: str, data: bytes, index: int = 3, raw: str = "") -> Member:
@@ -201,7 +206,9 @@ def test_binary_member_no_crash(ctx):
 
 def test_empty_member_and_no_rules(ctx):
     assert yara_engine.scan_member(_member("e.py", b""), ctx) == []
-    no_rules = ScanContext(rules=None, limits=Limits(), pkg=ctx.pkg)
+    no_rules = ScanContext(
+        rules=None, limits=Limits(), pkg=ctx.pkg, archive_kind="sdist"
+    )
     assert yara_engine.scan_member(_member("s.py", _py_setup()), no_rules) == []
 
 
@@ -220,14 +227,19 @@ class _Raises:
 
 def test_yara_timeout_becomes_limits_exceeded(ctx):
     fake = _Raises(yara.TimeoutError("slow"))
-    c = ScanContext(rules=fake, limits=Limits(yara_timeout_s=7), pkg=ctx.pkg)
+    c = ScanContext(
+        rules=fake, limits=Limits(yara_timeout_s=7), pkg=ctx.pkg, archive_kind="sdist"
+    )
     with pytest.raises(LimitsExceeded):
         yara_engine.scan_member(_member("s.py", b"x"), c)
     assert fake.timeout == 7
 
 
 def test_other_yara_error_becomes_parse_error(ctx):
-    c = ScanContext(rules=_Raises(yara.Error("boom")), limits=Limits(), pkg=ctx.pkg)
+    c = ScanContext(
+        rules=_Raises(yara.Error("boom")), limits=Limits(), pkg=ctx.pkg,
+        archive_kind="sdist",
+    )
     with pytest.raises(ParseError, match="yara error: Error"):
         yara_engine.scan_member(_member("s.py", b"x"), c)
 
@@ -274,7 +286,10 @@ def test_whitespace_padded_evaluators_do_not_time_out(ctx):
     # of this took over 20 s. Padding must not turn a member into a timeout.
     unit = (EV + "(" + " " * 40).encode("ascii")
     data = unit * (2 * 2**20 // len(unit))
-    c = ScanContext(rules=ctx.rules, limits=Limits(yara_timeout_s=2), pkg=ctx.pkg)
+    c = ScanContext(
+        rules=ctx.rules, limits=Limits(yara_timeout_s=2), pkg=ctx.pkg,
+        archive_kind="sdist",
+    )
     assert yara_engine.scan_member(_member("min.js", data), c) == []
 
 
@@ -310,6 +325,8 @@ _EXPECTED_HITS = {
     "scripts/update_top_lists.py": {"esl001_py_network"},
     # ESL-006 itself: POSTs to api.osv.dev with urllib (a real network call)
     "src/eslabon/osv.py": {"esl001_py_network"},
+    # name==version fetch: GETs the registry API and the archive with urllib
+    "src/eslabon/fetch.py": {"esl001_py_network"},
 }
 
 

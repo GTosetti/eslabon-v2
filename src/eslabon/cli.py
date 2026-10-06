@@ -2,6 +2,11 @@
 
 Usage: ``eslabon scan TARGET [--ecosystem {pypi,npm}] [--out PATH] [--offline]``.
 
+TARGET is a local archive or ``name==version``; the latter (``--ecosystem``
+required) is resolved on the registry and downloaded by fetch.py over HTTPS into
+a temporary directory outside the working tree, scanned like a local file, and
+deleted. Nothing is ever installed or executed.
+
 Exit codes: 2 for any non-ok scan status or any user/IO error, 1 if the scan is
 ok and produced findings, 0 otherwise. Errors print exactly one line on stderr,
 never a traceback, and any attacker-influenced text is passed through clean_text.
@@ -12,21 +17,34 @@ from __future__ import annotations
 import argparse
 import hashlib
 import os
+import re
+import shutil
 import sys
+import tempfile
 import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from eslabon import osv, typosquat
+from eslabon import fetch, osv, typosquat
 from eslabon.catalog import load_catalog
 from eslabon.emit import finding_event, summary_event, write_events
-from eslabon.model import Anomaly, Limits, PackageRef, ScanResult
+from eslabon.model import (
+    Anomaly,
+    FetchError,
+    HashMismatch,
+    Limits,
+    LimitsExceeded,
+    PackageRef,
+    ScanResult,
+)
 from eslabon.sanitize import clean_text
 from eslabon.scan import analyze_archive, archive_kind, worst_status
 from eslabon.worker import run_isolated
 
 _CHUNK = 1 * 2**20
 _ECOSYSTEMS = ("pypi", "npm")
+# name==version; fullmatch, so a trailing newline does not slip through "$"
+_TARGET = re.compile(r"^(@[a-z0-9._-]+/)?[A-Za-z0-9._-]+==[A-Za-z0-9.+!_-]+$")
 
 
 class UsageError(Exception):
@@ -43,8 +61,11 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="eslabon", description="Static scanner for PyPI/npm archives."
     )
     sub = parser.add_subparsers(dest="command", required=True, parser_class=_Parser)
-    sc = sub.add_parser("scan", help="scan a local package archive")
-    sc.add_argument("target", help="path to a local .whl, .tar.gz or .tgz archive")
+    sc = sub.add_parser("scan", help="scan a package archive")
+    sc.add_argument(
+        "target",
+        help="a local .whl/.tar.gz/.tgz archive, or name==version (needs --ecosystem)",
+    )
     sc.add_argument("--ecosystem", choices=_ECOSYSTEMS)
     sc.add_argument("--out", type=Path, default=Path("events.jsonl"))
     sc.add_argument(
@@ -85,48 +106,128 @@ def _sha256(path: Path, max_bytes: int) -> str:
     return digest.hexdigest()
 
 
-def _scan(args: argparse.Namespace) -> int:
-    target = Path(args.target)
-    if not target.is_file():
-        raise UsageError(f"not a file: {clean_text(str(target), 512)}")
-    ecosystem = _ecosystem(target, args.ecosystem)
-    limits = Limits()
-    scan_id = uuid.uuid4().hex
+def _parse_argument(text: str, ecosystem: str | None) -> tuple[str, str, str]:
+    """(name, version, ecosystem) of a ``name==version`` target, or UsageError."""
+    if not _TARGET.fullmatch(text):
+        raise UsageError(f"not a file or name==version: {clean_text(text, 512)}")
+    if ecosystem is None:
+        raise UsageError("name==version needs --ecosystem pypi or npm")
+    name, version = text.split("==", 1)
+    if name.startswith("@") and ecosystem != "npm":
+        raise UsageError("a scoped @scope/name is an npm package")
+    bare = name.rsplit("/", 1)[-1]
+    if not (_has_alnum(bare) and _has_alnum(version)):
+        raise UsageError("name and version need a letter or digit")
+    return name, version, ecosystem
+
+
+def _has_alnum(text: str) -> bool:
+    return any(c.isalnum() for c in text)
+
+
+def _scan_file(target: Path, ecosystem: str, limits: Limits) -> tuple[ScanResult, str]:
+    """Hash and analyse an archive file: (result, its sha256, "" if not hashed)."""
     try:
         size = os.stat(target).st_size
     except OSError as exc:
         raise UsageError(f"cannot stat target: {type(exc).__name__}") from exc
-
     if size > limits.max_download:
         # Refused before the archive is opened: no hash, no worker.
         result = ScanResult(
             status="limits_exceeded", findings=[], anomalies=[],
             error=f"archive larger than {limits.max_download}",
         )
-        pkg = PackageRef(None, None, ecosystem, "")
-    else:
+        return result, ""
+    try:
+        sha = _sha256(target, size)
+    except OSError as exc:
+        raise UsageError(f"cannot read target: {type(exc).__name__}") from exc
+    request = PackageRef(None, None, ecosystem, sha)
+    try:
+        result = run_isolated(
+            analyze_archive,
+            (target, request, limits),
+            timeout_s=limits.worker_timeout_s,
+        )
+    except Exception as exc:  # e.g. spawn/pickling failure: still summarise
+        result = _failed(f"worker error: {type(exc).__name__}")
+    return result, sha
+
+
+def _scan_registry(
+    name: str, version: str, ecosystem: str, limits: Limits
+) -> tuple[ScanResult, str]:
+    """Fetch name==version and scan it: (result, sha256 of what we got or "").
+
+    The archive is the only package data ever written to disk: one file, under
+    its sanitised registry file name (so its suffix decides the archive kind as
+    for a local file), in a fresh tempfile.mkdtemp() directory outside the
+    working tree, removed with that directory whatever happens. It is never
+    extracted, installed or executed.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="eslabon-"))
+    artifact: fetch.Artifact | None = None
+    try:
+        deadline = fetch.new_deadline()
         try:
-            sha = _sha256(target, size)
-        except OSError as exc:
-            raise UsageError(f"cannot read target: {type(exc).__name__}") from exc
-        request = PackageRef(None, None, ecosystem, sha)
-        try:
-            result = run_isolated(
-                analyze_archive,
-                (target, request, limits),
-                timeout_s=limits.worker_timeout_s,
-            )
-        except Exception as exc:  # e.g. spawn/pickling failure: still summarise
-            result = _failed(f"worker error: {type(exc).__name__}")
+            artifact = fetch.resolve(name, version, ecosystem, deadline=deadline)
+            path, anomalies = fetch.download(artifact, tmp, limits, deadline=deadline)
+        except HashMismatch as exc:
+            failed = _fetch_failed("hash_mismatch", str(exc), artifact)
+            return failed, exc.actual_sha256
+        except LimitsExceeded as exc:
+            return _fetch_failed("limits_exceeded", str(exc), artifact), ""
+        except FetchError as exc:
+            return _fetch_failed("fetch_error", str(exc), artifact), ""
+        except Exception as exc:  # fail closed on anything unexpected
+            error = f"fetch error: {type(exc).__name__}"
+            return _fetch_failed("fetch_error", error, artifact), ""
+        result, sha = _scan_file(path, ecosystem, limits)
+        result.anomalies.extend(anomalies)
+        return result, sha
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
+def _fetch_failed(
+    status: str, error: str, artifact: fetch.Artifact | None
+) -> ScanResult:
+    anomalies = fetch.hash_anomalies(artifact) if artifact else []
+    return ScanResult(status=status, findings=[], anomalies=anomalies, error=error)
+
+
+def _scan(args: argparse.Namespace) -> int:
+    limits = Limits()
+    scan_id = uuid.uuid4().hex
+    target = Path(args.target)
+    argument: tuple[str, str] | None = None
+    if target.is_file():
+        ecosystem = _ecosystem(target, args.ecosystem)
+        result, sha = _scan_file(target, ecosystem, limits)
         pkg = PackageRef(result.metadata_name, result.metadata_version, ecosystem, sha)
+    else:
+        name, version, ecosystem = _parse_argument(args.target, args.ecosystem)
+        argument = (name, version)
+        result, sha = _scan_registry(name, version, ecosystem, limits)
+        # the requested name and version are the identity; ESL-005/006 still
+        # run on them when the fetch or the worker failed (R42/R46)
+        pkg = PackageRef(name, version, ecosystem, sha)
     # Identity names first, on their own: a broken top list (ESL-005) must not
     # stop ESL-006, and vice versa. None means "could not be computed".
     idents: list[tuple[str, str | None]] | None
     try:
-        idents = _identity_names(target, ecosystem, result)
+        idents = _identity_names(target, ecosystem, result, argument)
     except Exception as exc:
         idents = None
         _downgrade(result, f"identity error: {type(exc).__name__}")
+    if idents == []:
+        # R47: ESL-005/006 cannot run without a name -- the scan is incomplete,
+        # with or without --offline
+        result.anomalies.append(Anomaly("no_identity", "", _NO_IDENTITY))
+        worse = worst_status(result.status, "incomplete")
+        if worse != result.status or result.error is None:
+            result.error = _NO_IDENTITY
+        result.status = worse
     try:
         for name, _ in idents or []:
             finding = typosquat.check(name, ecosystem)
@@ -160,10 +261,40 @@ def _scan(args: argparse.Namespace) -> int:
 
 
 _MISMATCH = "metadata name and archive file name differ"
+_ARG_MISMATCH = "metadata name and requested name differ"
+_NO_IDENTITY = "no package name from metadata or file name"
+
+
+def _same_requested(meta: str, requested: str, ecosystem: str) -> bool:
+    """Same registry name (npm: case-folded, scope kept; PyPI: PEP 503)."""
+    if ecosystem == "npm":
+        return meta.lower() == requested.lower()
+    return typosquat.normalize(meta, "pypi") == typosquat.normalize(requested, "pypi")
+
+
+def _argument_identity(
+    argument: tuple[str, str], ecosystem: str, result: ScanResult
+) -> list[tuple[str, str | None]]:
+    """name==version targets: the requested name/version first, then the
+    metadata's if it names another package (identity_mismatch) or the same
+    package with another version (R47: OSV is asked about both)."""
+    name, version = argument
+    result.identity_source = "argument"
+    idents: list[tuple[str, str | None]] = [(name, version)]
+    meta, meta_version = result.metadata_name, result.metadata_version
+    if meta and not _same_requested(meta, name, ecosystem):
+        idents.append((meta, meta_version))
+        result.anomalies.append(Anomaly("identity_mismatch", "", _ARG_MISMATCH))
+    elif meta and meta_version and meta_version != version:
+        idents.append((name, meta_version))
+    return idents
 
 
 def _identity_names(
-    target: Path, ecosystem: str, result: ScanResult
+    target: Path,
+    ecosystem: str,
+    result: ScanResult,
+    argument: tuple[str, str] | None = None,
 ) -> list[tuple[str, str | None]]:
     """The (name, version) pairs the package claims to be, for ESL-005/006.
 
@@ -174,8 +305,14 @@ def _identity_names(
     anomaly identity_mismatch is recorded. Each name carries ITS OWN version:
     the metadata version for the metadata name (the file-name version if the
     metadata has none), the file-name version for the file-name name; None
-    when no version is parseable for that name.
+    when no version is parseable for that name. If metadata and file name name
+    the same package with different versions, the name is returned once per
+    version (R47), so OSV is asked about both.
+
+    For a ``name==version`` target, see _argument_identity.
     """
+    if argument is not None:
+        return _argument_identity(argument, ecosystem, result)
     meta = result.metadata_name
     from_file = typosquat.identity_from_filename(
         target.name, archive_kind(target, ecosystem), meta
@@ -189,6 +326,8 @@ def _identity_names(
         )
         version = result.metadata_version or (file_version if same else None)
         idents.append((meta, version))
+        if same and file_version and file_version != version:
+            idents.append((meta, file_version))
         if file_name and not same:
             idents.append((file_name, file_version))
             result.anomalies.append(Anomaly("identity_mismatch", "", _MISMATCH))

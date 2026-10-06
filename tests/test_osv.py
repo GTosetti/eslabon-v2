@@ -378,8 +378,10 @@ def test_sdist_rebuild_suffix_queries_the_metadata_version(tmp_path, monkeypatch
     data = make_tar([TarItem("pyyaml-6.0/PKG-INFO", b"Name: PyYAML\nVersion: 6.0\n\n")])
     code, events, rec = _scan_rec(tmp_path, monkeypatch, data, "pyyaml-6.0-1.tar.gz")
     assert code == 0
+    # same name, two versions: OSV is asked about both (R47), metadata first
     assert [c[1] for c in rec.calls] == [
         {"package": {"name": "PyYAML", "ecosystem": "PyPI"}, "version": "6.0"},
+        {"package": {"name": "PyYAML", "ecosystem": "PyPI"}, "version": "6.0-1"},
     ]
 
 
@@ -391,20 +393,23 @@ def test_nameless_archive_is_osv_unavailable_exit_2(tmp_path, monkeypatch):
     assert code == 2
     assert rec.calls == []
     sc = events[-1]["eslabon"]["scan"]
-    assert (sc["status"], sc["osv_status"]) == ("osv_unavailable", "unavailable")
-    assert sc["error"] == "osv: no package name to query"
+    # R47: no name is "incomplete" (no_identity), which outranks osv_unavailable
+    assert (sc["status"], sc["osv_status"]) == ("incomplete", "unavailable")
+    assert "no_identity" in sc["anomaly_kinds"]
+    assert sc["error"] == "no package name from metadata or file name"
 
 
 def test_nameless_archive_offline_is_skipped_by_request(tmp_path, monkeypatch):
-    """--offline is the user's explicit opt-out: skipped, exit from other statuses."""
+    """--offline is the user's explicit opt-out (skipped), but a nameless
+    archive is still incomplete: ESL-005 could not run either (R47)."""
     data = make_tar([TarItem("payload/setup.cfg", b"[x]\n")])
     code, events, rec = _scan_rec(
         tmp_path, monkeypatch, data, "payload.tar.gz", "--offline"
     )
-    assert code == 0
+    assert code == 2
     assert rec.calls == []
     sc = events[-1]["eslabon"]["scan"]
-    assert (sc["status"], sc["osv_status"]) == ("ok", "skipped")
+    assert (sc["status"], sc["osv_status"]) == ("incomplete", "skipped")
 
 
 def test_broken_top_list_still_runs_osv(tmp_path, monkeypatch):
@@ -462,3 +467,20 @@ def test_real_opener_sends_user_agent():
     assert req.get_header("User-agent") == f"eslabon/{__version__}"
     assert req.get_method() == "POST"
     assert req.get_header("Content-type") == "application/json"
+
+
+def test_read_capped_checks_the_deadline(monkeypatch):
+    # R47(c): a server dribbling bytes under the socket timeout cannot hold the
+    # read past the deadline
+    now = [0.0]
+    monkeypatch.setattr(osv, "_clock", lambda: now[0])
+
+    class Dribble(io.BytesIO):
+        def read(self, n=-1):
+            now[0] += 4.0
+            return super().read(1)
+
+    with pytest.raises(osv.OsvError, match="deadline"):
+        osv._read_capped(Dribble(b"x" * 100), osv.MAX_RESPONSE, deadline=10.0)
+    assert now[0] == 12.0
+    assert osv._read_capped(Dribble(b"ab"), 3, deadline=100.0) == b"ab"

@@ -472,7 +472,7 @@ def test_other_package_json_silent(raw):
     assert _ids(_pkg_json({"postinstall": CURL + " x"}), raw=raw) == []
 
 
-@pytest.mark.parametrize("kind", ["sdist", "wheel", ""])
+@pytest.mark.parametrize("kind", ["sdist", "wheel"])
 def test_not_npm_silent(kind):
     data = _pkg_json({"postinstall": CURL + " x"})
     assert _ids(data, kind=kind) == []

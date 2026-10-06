@@ -346,7 +346,8 @@ def test_local_metadata_read_or_no_metadata_anomaly(dirs):
     s = _summary(_events(dirs[1]))
     assert s["package"] == {"name": "unknown", "version": ""}
     assert "no_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
-    assert s["eslabon"]["scan"]["status"] == "osv_unavailable"
+    # R47: no name at all is "incomplete", which outranks osv_unavailable
+    assert s["eslabon"]["scan"]["status"] == "incomplete"
     assert s["eslabon"]["scan"]["osv_status"] == "unavailable"
 
 
@@ -442,8 +443,9 @@ def test_npm_metadata_too_deep_is_incomplete(dirs):
     s = _summary(_events(dirs[1]))
     sc = s["eslabon"]["scan"]
     assert sc["status"] == "incomplete"
-    assert sc["anomaly_kinds"] == ["package_json_too_deep"]
-    assert sc["anomalies"] == 1  # recorded once, not by both readers
+    # the name in it was unreadable too, so ESL-005/006 had none (R47)
+    assert sc["anomaly_kinds"] == ["no_identity", "package_json_too_deep"]
+    assert sc["anomalies"] == 2  # too_deep recorded once, not by both readers
     assert "package_json_too_deep" in scan.INCOMPLETE_KINDS
 
 
@@ -1067,3 +1069,56 @@ def test_esl005_npm_rebuild_suffix_is_no_mismatch(dirs, monkeypatch):
     assert _run(target, dirs[1], "--ecosystem", "npm") == 0
     sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
     assert "identity_mismatch" not in sc["anomaly_kinds"]
+
+
+# ------------------------------------------------------- R47 identity ----
+
+
+def test_r47_nameless_offline_is_incomplete_exit_2(dirs):
+    # ESL-005/006 could not run on a nameless archive: never a clean exit 0
+    target = _put(dirs, "anon.tgz", make_tar([TarItem("package/index.js", b"x")]))
+    assert _run(target, dirs[1], "--ecosystem", "npm", "--offline") == 2
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert sc["status"] == "incomplete"
+    assert "no_identity" in sc["anomaly_kinds"]
+    assert sc["osv_status"] == "skipped"
+    assert "no_identity" in scan.INCOMPLETE_KINDS
+
+
+def test_r47_nameless_online_incomplete_and_osv_unavailable(dirs):
+    target = _put(dirs, "anon.tgz", make_tar([TarItem("package/index.js", b"x")]))
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 2
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    # precedence decides: incomplete outranks osv_unavailable
+    assert (sc["status"], sc["osv_status"]) == ("incomplete", "unavailable")
+    assert "no_identity" in sc["anomaly_kinds"]
+
+
+def test_r47_named_archive_has_no_no_identity(dirs):
+    target = _put(dirs, "left-pad-1.3.0.tgz", CLEAN_TGZ)
+    assert _run(target, dirs[1], "--ecosystem", "npm", "--offline") == 0
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert "no_identity" not in sc["anomaly_kinds"]
+
+
+def test_r47_same_name_different_versions_queries_osv_with_both(dirs, monkeypatch):
+    from eslabon import osv
+
+    queries = []
+
+    def opener(url, data, timeout):
+        q = json.loads(data)
+        queries.append((q["package"]["name"], q.get("version")))
+        return osv.API_URL, b"{}"
+
+    monkeypatch.setattr(osv, "DEFAULT_OPENER", opener)
+    target = _put(dirs, "left-pad-9.9.9.tgz", CLEAN_TGZ)  # metadata says 1.3.0
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    assert queries == [("left-pad", "1.3.0"), ("left-pad", "9.9.9")]
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert "identity_mismatch" not in sc["anomaly_kinds"]
+    # same version in both: one query
+    queries.clear()
+    target = _put(dirs, "left-pad-1.3.0.tgz", CLEAN_TGZ)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    assert queries == [("left-pad", "1.3.0")]

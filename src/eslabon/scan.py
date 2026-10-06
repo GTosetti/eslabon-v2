@@ -45,6 +45,7 @@ INCOMPLETE_KINDS = frozenset(
         "unsupported_compression",
         "bad_member",
         npm_scripts.PACKAGE_JSON_TOO_DEEP,
+        "no_identity",  # added by the cli: ESL-005/006 had no name to check
     }
 )
 

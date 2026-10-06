@@ -306,12 +306,14 @@ def test_wheel_setup_py_silent():
     assert _scan("setup.py", _urlopen_setup(), kind="wheel") == []
 
 
-def test_unknown_archive_kind_silent():
-    m = Member(index=0, path="pkg-1.0/setup.py", data=_urlopen_setup())
+def test_archive_kind_is_required():
+    # a silent default ("") would switch ESL-001 off without anyone noticing
     pkg = PackageRef("demo", "0.0.1", "pypi", "")
-    c = ScanContext(rules=_RULES, limits=Limits(), pkg=pkg)
-    assert c.archive_kind == ""
-    assert yara_engine.scan_member(m, c) == []
+    with pytest.raises(TypeError):
+        ScanContext(rules=_RULES, limits=Limits(), pkg=pkg)  # type: ignore[call-arg]
+    for bad in ("", "zip", "SDIST"):
+        with pytest.raises(ValueError):
+            ScanContext(rules=_RULES, limits=Limits(), pkg=pkg, archive_kind=bad)
 
 
 def test_other_rules_still_apply_outside_setup_py():
