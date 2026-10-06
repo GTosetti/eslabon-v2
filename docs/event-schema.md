@@ -54,7 +54,7 @@ no BOM, and always under 65,536 bytes.
 | `eslabon.mitigation.action` / `.residual_gap` / `.detect` | string | Findings only: catalog text | no |
 | `eslabon.scan.status` | string | `ok`, `timeout`, `limits_exceeded`, `parse_error`, `hash_mismatch`, `fetch_error`, `incomplete`, `osv_unavailable` (see below) | no |
 | `eslabon.scan.files_scanned` / `bytes_read` | integer | Work done. `bytes_read` differs by format: for a zip/wheel it is the decompressed bytes of the members read; for a tar it is the whole decompressed stream (headers, padding and skipped members included) | no |
-| `eslabon.scan.findings` / `anomalies` | integer | Counts | no |
+| `eslabon.scan.findings` / `anomalies` | integer | Counts. If writing the finding events fails (status downgraded to `parse_error`), `findings` can exceed the finding events actually written | no |
 | `eslabon.scan.anomaly_kinds` | string[] | Sorted unique anomaly kinds | no |
 | `eslabon.scan.osv_status` | string | `ok`, `unavailable`, `skipped` | no |
 | `eslabon.scan.duration_ms` | integer | Wall-clock duration | no |
@@ -88,8 +88,10 @@ metadata file is chosen by archive kind, and Eslabon refuses to guess:
   (`package/package.json`); a bare top-level `package.json` is ignored, because npm strips
   the first component.
 
-Members whose names were rewritten by normalisation (traversal, absolute path) are never
-candidates. More than one candidate, or several `.dist-info` directories, gives the anomaly
+Members whose names were rewritten by normalisation (traversal, absolute path) or contain a
+`\` are never candidates. If such a member would be a candidate under any reading
+(`\` as `/`, `..` resolved or dropped), the result is `ambiguous_metadata`, because some
+installer could let it win. More than one candidate, or several `.dist-info` directories, gives the anomaly
 kind `ambiguous_metadata` and no name. No candidate, or a malformed one, gives `no_metadata`
 (only when the scan status is otherwise `ok`). In both cases `package.name` is `unknown`.
 The values are attacker-controlled.
@@ -97,10 +99,12 @@ The values are attacker-controlled.
 ## Duplicate members
 
 When two members land on the same file, only the findings of the last copy are reported
-(that is the copy an installer leaves on disk). "Same file" uses the raw member name with
-`\` turned into `/` and then `posixpath.normpath` (npm: first component dropped), and only
-applies when neither name was rewritten by normalisation. Otherwise the findings of every
-copy are kept.
+(that is the copy an installer leaves on disk). "Same file" means the same
+`posixpath.normpath` of the raw member name (npm: first component dropped), and it only
+applies when neither name was rewritten by normalisation (traversal, absolute path) and
+neither contains a `\`. A backslash is a separator on Windows but a literal filename
+character on POSIX installers, so its landing place is uncertain. In every other case the
+findings of every copy are kept.
 
 ## Versioning
 

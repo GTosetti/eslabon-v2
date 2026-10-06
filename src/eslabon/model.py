@@ -23,7 +23,9 @@ class Limits:
 @dataclass(frozen=True)
 class Member:
     index: int  # order in archive
-    path: str  # normalised (lossy: '..' dropped, drive stripped, '\' -> '/')
+    # normalised, lossy: '..' dropped, drive stripped, backslash -> '/'. Use raw_path
+    # to know where an installer really writes the member.
+    path: str
     data: bytes
     raw_path: str = ""  # member name exactly as stored in the archive
 

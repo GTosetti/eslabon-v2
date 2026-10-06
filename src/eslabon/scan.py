@@ -122,12 +122,13 @@ def parse_metadata(m: Member, ecosystem: str) -> tuple[str, str] | None:
 
 
 def faithful_key(raw: str, ecosystem: str) -> str:
-    """Where an installer really writes ``raw``: backslash -> '/', then normpath.
+    """Where an installer really writes ``raw``: ``posixpath.normpath(raw)``.
 
     npm drops the first component (node-tar strip:1). Only meaningful for names
-    that normalisation did not rewrite (see ``_rewritten``).
+    that ``_rewritten`` rejects; a backslash is never treated as a separator,
+    because on POSIX installers it is a literal filename character.
     """
-    p = posixpath.normpath(raw.replace(chr(0x5C), "/"))
+    p = posixpath.normpath(raw)
     if ecosystem == "npm":
         parts = p.split("/")
         if len(parts) > 1:
@@ -136,8 +137,13 @@ def faithful_key(raw: str, ecosystem: str) -> str:
 
 
 def _rewritten(raw: str, ecosystem: str) -> bool:
-    """True if normalisation had to rewrite the name (traversal, absolute, drive)."""
-    return bool(normalize_path(raw, ecosystem)[1])
+    """True if the landing place of ``raw`` is uncertain.
+
+    That is: normalisation had to rewrite it (traversal, absolute, drive), or it
+    contains a backslash (a separator on Windows, a literal character on POSIX).
+    Such members never take part in last-copy-wins and are never metadata.
+    """
+    return chr(0x5C) in raw or bool(normalize_path(raw, ecosystem)[1])
 
 
 class _MetadataPicker:
@@ -147,7 +153,9 @@ class _MetadataPicker:
     ``.dist-info`` dir in the archive. sdist (tar, pypi): only
     ``<single top dir>/PKG-INFO``. npm: only a ``package.json`` whose raw path
     has exactly two components (a bare ``package.json`` is dropped by strip:1).
-    Members whose names were rewritten by normalisation are never candidates.
+    A rewritten or backslash member is never a candidate; if it WOULD be one
+    under any reading (backslash as '/', '..' resolved or dropped), the result
+    is ambiguous, since some installer could let it win.
     """
 
     def __init__(self, ecosystem: str) -> None:
@@ -155,6 +163,16 @@ class _MetadataPicker:
         self.mode = ""  # decided on the first member, once the container is known
         self.candidates: list[tuple[str, str] | None] = []
         self.dirs: set[str] = set()
+        self.suspect = False
+
+    def _wanted(self, parts: list[str]) -> bool:
+        if len(parts) != 2:
+            return False
+        if self.mode == "wheel":
+            return parts[0].endswith(".dist-info") and parts[1] == "METADATA"
+        if self.mode == "sdist":
+            return parts[1] == "PKG-INFO"
+        return parts[1] == "package.json"
 
     def see(self, m: Member, raw: str, rewritten: bool, archive_kind: str) -> None:
         if not self.mode:
@@ -163,24 +181,25 @@ class _MetadataPicker:
             else:
                 self.mode = "wheel" if archive_kind == "zip" else "sdist"
         if rewritten:
+            as_slash = raw.replace(chr(0x5C), "/")
+            readings = (
+                posixpath.normpath(as_slash).lstrip("/").split("/"),
+                normalize_path(raw, "pypi")[0].split("/"),  # '..' dropped, no strip
+            )
+            if any(self._wanted(r) for r in readings):
+                self.suspect = True
             return
-        parts = posixpath.normpath(raw.replace(chr(0x5C), "/")).split("/")
-        if self.mode == "wheel":
-            if parts[0].endswith(".dist-info"):
-                self.dirs.add(parts[0])
-            wanted = len(parts) == 2 and parts[0].endswith(".dist-info")
-            wanted = wanted and parts[1] == "METADATA"
-        elif self.mode == "sdist":
+        parts = posixpath.normpath(raw).split("/")
+        if self.mode == "wheel" and parts[0].endswith(".dist-info"):
             self.dirs.add(parts[0])
-            wanted = len(parts) == 2 and parts[1] == "PKG-INFO"
-        else:
-            wanted = len(parts) == 2 and parts[1] == "package.json"
-        if wanted:
+        if self.mode == "sdist":
+            self.dirs.add(parts[0])
+        if self._wanted(parts):
             self.candidates.append(parse_metadata(m, self.ecosystem))
 
     def result(self) -> tuple[str, str] | None | str:
         """(name, version), None (nothing usable) or "ambiguous"."""
-        if len(self.candidates) > 1:
+        if self.suspect or len(self.candidates) > 1:
             return "ambiguous"
         if self.mode == "wheel" and len(self.dirs) > 1:
             return "ambiguous"

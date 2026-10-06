@@ -494,6 +494,78 @@ def test_r25_wheel_backslash_traversal_copy_is_kept(dirs, monkeypatch):
     assert _finding_snippets(_events(dirs[1])) == ["EVIL payload"]
 
 
+BS = chr(0x5C)  # backslash: a literal filename character on POSIX installers
+
+
+@pytest.mark.parametrize(
+    ("eco", "items"),
+    [
+        (
+            "pypi",
+            [
+                TarItem("pkg-1.0/PKG-INFO", b"Name: pkg\nVersion: 1.0\n"),
+                TarItem("pkg-1.0/setup.py", b"EVIL payload"),
+                TarItem("pkg-1.0" + BS + "setup.py", b"ok"),
+            ],
+        ),
+        (
+            "npm",
+            [
+                TarItem("package/package.json", PKG_JSON),
+                TarItem("package/index.js", b"EVIL payload"),
+                TarItem("package" + BS + "index.js", b"ok"),
+            ],
+        ),
+        (
+            "pypi",
+            [
+                TarItem("pkg-1.0/PKG-INFO", b"Name: pkg\nVersion: 1.0\n"),
+                TarItem("pkg-1.0/pkg/__init__.py", b"EVIL payload"),
+                TarItem("pkg-1.0/pkg" + BS + "__init__.py", b"ok"),
+            ],
+        ),
+    ],
+    ids=["sdist", "npm", "nested"],
+)
+def test_r27_backslash_copy_does_not_hide_finding(dirs, monkeypatch, eco, items):
+    # On POSIX "\" is a literal character: both files get installed.
+    _in_process(monkeypatch)
+    monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
+    target = _put(dirs, "bs.tgz", make_tar(items))
+    assert _run(target, dirs[1], "--ecosystem", eco) == 1
+    events = _events(dirs[1])
+    assert _finding_snippets(events) == ["EVIL payload"]
+    assert _summary(events)["eslabon"]["scan"]["status"] == "ok"
+
+
+def test_r27_backslash_metadata_candidate_is_ambiguous(dirs):
+    data = make_tar(
+        [
+            TarItem("pkg-1.0/PKG-INFO", b"Name: pkg\nVersion: 1.0\n"),
+            TarItem("pkg-1.0" + BS + "PKG-INFO", b"Name: spoof\nVersion: 9\n"),
+        ]
+    )
+    target = _put(dirs, "pkg-1.0.tar.gz", data)
+    assert _run(target, dirs[1], "--ecosystem", "pypi") == 0
+    s = _summary(_events(dirs[1]))
+    assert s["package"]["name"] == "unknown"
+    assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
+
+
+def test_r27_traversal_metadata_candidate_is_ambiguous(dirs):
+    data = make_zip(
+        [
+            ZipItem("pkg-1.dist-info/METADATA", b"Name: pkg\nVersion: 1\n"),
+            ZipItem("x/../pkg-1.dist-info/METADATA", b"Name: spoof\nVersion: 9\n"),
+        ]
+    )
+    target = _put(dirs, "pkg-1-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 0
+    s = _summary(_events(dirs[1]))
+    assert s["package"]["name"] == "unknown"
+    assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
+
+
 def test_r25_identical_faithful_paths_still_collapse(dirs, monkeypatch):
     _in_process(monkeypatch)
     monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
