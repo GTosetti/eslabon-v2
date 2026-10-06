@@ -14,6 +14,7 @@ import re
 from collections.abc import Callable
 from pathlib import Path
 
+from eslabon import yara_engine
 from eslabon.archive import TarStats, iter_members, normalize_path
 from eslabon.model import (
     Anomaly,
@@ -43,8 +44,11 @@ INCOMPLETE_KINDS = frozenset(
     {"encrypted_member", "unsupported_compression", "bad_member"}
 )
 
-# Analysers run on every member. Filled from Task 9 onwards.
-ANALYZERS: list[Callable[[Member, ScanContext], list[Finding]]] = []
+# Analysers run on every member. Registered here, at import time, because the
+# spawned worker re-imports this module and never sees runtime registration.
+ANALYZERS: list[Callable[[Member, ScanContext], list[Finding]]] = [
+    yara_engine.scan_member,
+]
 
 _META_HEADER_CAP = 64 * 2**10  # RFC 822 headers live at the top; never scan more
 _SDIST_PKG_INFO = re.compile(r"[^/]+/PKG-INFO")
@@ -63,7 +67,10 @@ def worst_status(*statuses: str) -> str:
 
 
 def _get_rules() -> object | None:
-    """Compile the rule set once per worker process. Task 9 provides the rules."""
+    """Compile the rule set once per process (module-level cache)."""
+    global _rules_cache
+    if _rules_cache is None:
+        _rules_cache = yara_engine.compile_rules()
     return _rules_cache
 
 
