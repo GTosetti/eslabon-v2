@@ -8,7 +8,6 @@ extracted to disk and no package code is ever imported or executed.
 
 from __future__ import annotations
 
-import json
 import posixpath
 import re
 from collections.abc import Callable
@@ -41,7 +40,12 @@ STATUS_PRECEDENCE = (
 )
 # Anomaly kinds meaning "content exists that was not scanned".
 INCOMPLETE_KINDS = frozenset(
-    {"encrypted_member", "unsupported_compression", "bad_member"}
+    {
+        "encrypted_member",
+        "unsupported_compression",
+        "bad_member",
+        npm_scripts.PACKAGE_JSON_TOO_DEEP,
+    }
 )
 
 # Analysers run on every member. Registered here, at import time, because the
@@ -103,11 +107,12 @@ def _parse_rfc822(data: bytes) -> tuple[str, str] | None:
 
 
 def _parse_package_json(data: bytes) -> tuple[str, str] | None:
-    try:
-        doc = json.loads(data)
-    except (ValueError, RecursionError):
-        return None
-    if not isinstance(doc, dict):
+    return _name_version(npm_scripts.load_package_json(data)[0])
+
+
+def _name_version(doc: dict | None) -> tuple[str, str] | None:
+    """name/version of a package.json read by npm_scripts.load_package_json."""
+    if doc is None:
         return None
     name, version = doc.get("name"), doc.get("version")
     if isinstance(name, str) and isinstance(version, str) and name and version:
@@ -147,6 +152,8 @@ class _MetadataPicker:
         self.candidates: list[tuple[str, str] | None] = []
         self.dirs: set[str] = set()
         self.suspect = False
+        # package.json candidates Python could not read but npm can (too deep)
+        self.problems: list[Anomaly] = []
 
     def _wanted(self, parts: list[str]) -> bool:
         if len(parts) != 2:
@@ -172,8 +179,15 @@ class _MetadataPicker:
             self.dirs.add(parts[0])
         if self.mode == "sdist":
             self.dirs.add(parts[0])
-        if self._wanted(parts):
+        if not self._wanted(parts):
+            return
+        if self.mode != "npm":
             self.candidates.append(parse_metadata(m, self.ecosystem))
+            return
+        doc, problem = npm_scripts.load_package_json(m.data)
+        if problem == npm_scripts.PACKAGE_JSON_TOO_DEEP:
+            self.problems.append(npm_scripts.package_json_anomaly(problem, raw))
+        self.candidates.append(_name_version(doc))
 
     def result(self) -> tuple[str, str] | None | str:
         """(name, version), None (nothing usable) or "ambiguous"."""
@@ -225,6 +239,9 @@ def analyze_archive(path: Path, pkg: PackageRef, limits: Limits) -> ScanResult:
     except ParseError as exc:
         status, error = "parse_error", str(exc)
 
+    for problem in picker.problems:
+        if problem not in anomalies:  # ESL-002 may have recorded it already
+            anomalies.append(problem)
     if any(a.kind in INCOMPLETE_KINDS for a in anomalies):
         status = worst_status(status, "incomplete")
     meta = picker.result()

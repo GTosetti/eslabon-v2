@@ -67,15 +67,19 @@ When several statuses apply, the first one in this list wins:
 `incomplete` > `osv_unavailable` > `ok`.
 
 `incomplete` means content existed that was not scanned: an anomaly of kind
-`encrypted_member`, `unsupported_compression` or `bad_member` (a member whose read failed,
-or a GNU sparse tar member) was recorded. These anomaly kinds do **not** make a scan
+`encrypted_member`, `unsupported_compression`, `bad_member` (a member whose read failed,
+or a GNU sparse tar member) or `package_json_too_deep` (an npm `package.json` at the package
+root nested too deep for Python's JSON parser; npm's parser reads it, so its install scripts
+and the package identity went unchecked) was recorded. These anomaly kinds do **not** make a scan
 incomplete: `special_member` (tar FIFO, character or block device: no content),
 `overlapped_entry` (zip entries sharing one local header: the data was read and scanned),
 and `dir_with_content` (a zip entry that looks like a directory but carries data, or whose stored
 and host-mapped names disagree: it is read and scanned as a regular member), and
-`bad_package_json` (an npm `package.json` at the package root that is not UTF-8, not valid
-JSON or not a JSON object: npm itself would refuse to install it, so ESL-002 records no
-finding for it; the bytes were still matched by the other rules).
+`bad_package_json` (an npm `package.json` at the package root with a JSON syntax error or
+a root that is not an object: npm itself refuses to install it, so ESL-002 records no
+finding for it; the bytes were still matched by the other rules). `package.json` is read
+the way npm reads it, `JSON.parse(stripBOM(String(buffer)))`: invalid UTF-8 becomes U+FFFD
+and one leading BOM is dropped, so neither is an anomaly.
 
 Exit code of `eslabon scan`: 2 for every status other than `ok` (and for any usage or IO
 error), 1 if the status is `ok` and there are findings, 0 otherwise.
@@ -98,7 +102,8 @@ Members whose names were rewritten by normalisation (traversal, absolute path) o
 (`\` as `/`, `..` resolved or dropped), the result is `ambiguous_metadata`, because some
 installer could let it win. More than one candidate, or several `.dist-info` directories, gives the anomaly
 kind `ambiguous_metadata` and no name. No candidate, or a malformed one, gives `no_metadata`
-(only when the scan status is otherwise `ok`). In both cases `package.name` is `unknown`.
+(only when the scan status is otherwise `ok`). An npm candidate nested too deep for Python's
+parser gives `package_json_too_deep` instead, and the status `incomplete`. In both cases `package.name` is `unknown`.
 The values are attacker-controlled.
 
 Zip names are judged as stored in the archive (`ZipInfo.orig_filename`), never as the

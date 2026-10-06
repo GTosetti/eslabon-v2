@@ -4,22 +4,37 @@
 // and matched only against the decoded preinstall/install/postinstall
 // strings of package.json, never against archive members: a URL in a JS
 // file or in "repository"/"homepage" must not fire.
+// npm_scripts collapses every whitespace run of a script (any Unicode
+// whitespace, TAB and line breaks included) to ONE space before matching, so
+// separators here are a literal ' ' and padding cannot push a token out of a
+// window. Single spaces also keep the regexes cheap: '\s{1,10}' windows made
+// 10 MiB bombs 3-5x slower.
 // All strings are nocase: Windows runs CURL.EXE and NODE -E just the same.
 // Tool names need a boundary that is not a word byte, '.' or '-' on both
 // sides (node-curl, scripts/curl.js, curl-config stay silent), but '/' and
 // '\' before them are fine (/usr/bin/curl). '.exe' is allowed after them.
 // The pipe must be a single '|' ('a || b' is a fallback, not a pipe).
 // Every window is bounded and each token run is followed by a disjoint
-// class (\S then \s), so 10 MiB newline-free scripts stay linear.
-// PowerShell: an -e/-ec/-enc.../-EncodedCommand flag (or /e...) anywhere
-// after the first powershell/pwsh word. A token window between the two cost
-// 4-9 s on 10 MiB of 'powershell a ', so the order is checked in the
-// condition instead of in one regex: the LAST flag after the FIRST word.
-// Flag strings are split by separator: a single '\s[-/]' class left too
-// short an atom (YARA's "may slow down scanning" warning). The flag must
-// follow a space: a TAB before it is a documented gap. npm_scripts does not
-// count $enc_* instances in match_count.
-// npx is not matched: 'npx only-allow pnpm' is a common benign preinstall.
+// class ([^ ] then ' '), so 10 MiB newline-free scripts stay linear.
+// node: up to 6 dash flags before -e/-p/--eval/--print. Flags that take a
+// separate value (-r x, --require x, --import x, --loader x,
+// --experimental-loader x, -C x, --conditions x) are handled by npm_scripts,
+// which rescans a copy with each such value dropped: a value token in this
+// regex let every 'node' hit chain over the next ones (20 s on 10 MiB of
+// 'node -r ').
+// PowerShell: a flag that is a prefix of -EncodedCommand (-e, -ec, -en,
+// -enc, ...) or of -EncodedArguments, introduced by '-', '/' or an en dash,
+// em dash or horizontal bar (U+2013..U+2015, matched as UTF-8 bytes),
+// anywhere after the first powershell/pwsh word. -Encoding and -Environment
+// do not fire. A token window between the two cost 4-9 s on 10 MiB of
+// 'powershell a ', so the order is checked in the condition instead of in
+// one regex: the LAST flag after the FIRST word. Flag strings are split by
+// introducer: a '[-/]' class left too short an atom (YARA's "may slow down
+// scanning" warning). npm_scripts does not count $enc_* in match_count.
+// Documented gaps: npx (not matched: 'npx only-allow pnpm' is a common
+// benign preinstall); inline code of other interpreters (python -c, perl -e,
+// bun -e, deno eval); sh -c / bash -c without a download tool or URL; shell
+// quoting tricks that split a word (c''url, c\url, $'\x63url').
 
 rule esl002_download_tool
 {
@@ -38,7 +53,7 @@ rule esl002_pipe_to_shell
         esl_id = "ESL-002"
         description = "install script pipes into a shell"
     strings:
-        $pipe = /(^|[^|])\|\s{0,10}(sudo\s{1,10})?([\w.\/-]{0,40}\/)?(sh|bash|zsh|dash|ksh|powershell|pwsh|cmd)(\.exe)?([^\w.-]|$)/ nocase
+        $pipe = /(^|[^|])\| ?(sudo )?([\w.\/-]{0,40}\/)?(sh|bash|zsh|dash|ksh|powershell|pwsh|cmd)(\.exe)?([^\w.-]|$)/ nocase
     condition:
         $pipe
 }
@@ -49,14 +64,16 @@ rule esl002_inline_eval
         esl_id = "ESL-002"
         description = "install script evaluates inline code (node -e, powershell -enc)"
     strings:
-        $node = /(^|[^\w.-])node(js)?(\.exe)?(\s{1,10}-\S{1,40}){0,3}\s{1,10}(-[ep]{1,2}|--eval|--print)([^\w-]|$)/ nocase
+        $node = /(^|[^\w.-])node(js)?(\.exe)?( -[^ ]{1,40}){0,6} (-[ep]{1,2}|--eval|--print)([^\w-]|$)/ nocase
         $ps = /(^|[^\w.-])(powershell|pwsh)(\.exe)?([^\w.-]|$)/ nocase
-        $enc_dash = / -e(c|n[a-z]{0,12})?([^\w-]|$)/ nocase
-        $enc_slash = / \/e(c|n[a-z]{0,12})?([^\w-]|$)/ nocase
+        $enc_dash = / -e(c|n(c(o(d(e(d(c(o(m(m(a(n(d)?)?)?)?)?)?|a(r(g(u(m(e(n(t(s)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?([^\w-]|$)/ nocase
+        $enc_slash = / \/e(c|n(c(o(d(e(d(c(o(m(m(a(n(d)?)?)?)?)?)?|a(r(g(u(m(e(n(t(s)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?([^\w-]|$)/ nocase
+        $enc_udash = / \xe2\x80[\x93-\x95]e(c|n(c(o(d(e(d(c(o(m(m(a(n(d)?)?)?)?)?)?|a(r(g(u(m(e(n(t(s)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?([^\w-]|$)/ nocase
     condition:
         $node or ($ps and (
             @enc_dash[#enc_dash] > @ps[1] or
-            @enc_slash[#enc_slash] > @ps[1]))
+            @enc_slash[#enc_slash] > @ps[1] or
+            @enc_udash[#enc_udash] > @ps[1]))
 }
 
 rule esl002_url

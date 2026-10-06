@@ -162,6 +162,10 @@ Both are committed with their date and URL.
   legitimate version of that exact shape (esbuild, sharp, puppeteer) downloads binaries with
   `child_process` and `https`, so a network-plus-exec rule on that file would not tell them
   apart. That file is still covered by ESL-003 and ESL-004, which run on every file.
+  For the same reason `node -e "require('./x')"` (core-js, es5-ext) is not flagged. Also
+  not matched: `npx <pkg>` (`npx only-allow pnpm` is a common benign preinstall), inline
+  code of other interpreters (`python -c`, `perl -e`, `bun -e`, `deno eval`), `sh -c`
+  without a download tool or URL, and shell quoting tricks that split a word (`c''url`).
 - ESL-004 misses exfiltration to an ordinary domain.
 - ESL-003 misses multi-stage decoding split across lines.
 - ESL-005 misses typosquats of packages outside the top 1,000.

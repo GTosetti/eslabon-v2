@@ -111,9 +111,8 @@ def test_husky_install_silent():
         b'"just a string"',
         b"",
         b"\xff\xfe{}",
-        b"[" * 100_000 + b"]" * 100_000,
     ],
-    ids=["syntax", "array", "string", "empty", "not-utf8", "deep"],
+    ids=["syntax", "array", "string", "empty", "not-utf8-not-json"],
 )
 def test_malformed_package_json_is_anomaly_not_crash(data):
     found, ctx = _scan(data)
@@ -122,6 +121,38 @@ def test_malformed_package_json_is_anomaly_not_crash(data):
     a = ctx.anomalies[0]
     assert a.path_hex == to_hex("package/package.json")
     assert "bad_package_json" not in scan.INCOMPLETE_KINDS
+
+
+def test_invalid_utf8_elsewhere_still_scanned():
+    # npm decodes with U+FFFD replacement and never refuses the file (C1)
+    data = _pkg_json({"postinstall": NODE_E + " 1"}, description="x")
+    data = data.replace(b'"description": "x"', b'"description": "\xff\xfe"')
+    found, ctx = _scan(data)
+    assert [f.rule_id for f in found] == ["ESL-002"]
+    assert ctx.anomalies == []
+    lines = data.split(b"\n")
+    assert lines[found[0].line - 1].strip().startswith(b'"postinstall"')
+
+
+def test_deep_nesting_is_incomplete_anomaly():
+    deep = "[" * 100_000 + "]" * 100_000
+    data = '{"x": ' + deep + ', "scripts": {"postinstall": "node install.js"}}'
+    found, ctx = _scan(data.encode())
+    assert found == []
+    assert [a.kind for a in ctx.anomalies] == ["package_json_too_deep"]
+    assert "package_json_too_deep" in scan.INCOMPLETE_KINDS
+
+
+def test_load_package_json():
+    assert npm_scripts.load_package_json(b'{"a": 1}') == ({"a": 1}, None)
+    assert npm_scripts.load_package_json(b"[1]") == (None, "bad_package_json")
+    assert npm_scripts.load_package_json(b"{x") == (None, "bad_package_json")
+    deep = b"[" * 100_000 + b"]" * 100_000
+    assert npm_scripts.load_package_json(deep) == (None, "package_json_too_deep")
+    # exactly one BOM is stripped, as stripBOM does
+    bom = b"\xef\xbb\xbf"
+    assert npm_scripts.load_package_json(bom + b"{}") == ({}, None)
+    assert npm_scripts.load_package_json(bom + bom + b"{}")[1] == "bad_package_json"
 
 
 # ---------------------------------------------------------- more shapes ----
@@ -152,6 +183,27 @@ def test_malformed_package_json_is_anomaly_not_crash(data):
         "Invoke-" + "WebRequest x",
         "echo see " + EVIL,
         "node install.js && " + CURL + " x",
+        # whitespace padding beyond the regex windows (I1)
+        "node" + " " * 11 + "-e 1",
+        "x " + "|" + " " * 11 + "sh",
+        "x |" + chr(9) * 20 + "sh",
+        PS + chr(9) + "-" + "enc SQBFAFgA",
+        PS + NL + "-" + "enc SQBFAFgA",
+        # node flags that take a value, and many flags
+        "node -r ./x -" + "e 1",
+        "node --require ./x --import y -" + "e 1",
+        "node --no-warnings --no-deprecation --trace-warnings --max-old-space-size=99"
+        " --stack-size=99 -" + "e 1",
+        "node -C dev --loader ./l.mjs --eval 1",
+        # PowerShell accepts en dash, em dash and horizontal bar as '-'
+        PS + " " + chr(0x2013) + "enc SQBFAFgA",
+        PS + " " + chr(0x2014) + "EncodedCommand SQBFAFgA",
+        PS + " " + chr(0x2015) + "e SQBFAFgA",
+        PS + " -" + "EncodedArguments x",
+        PS + " -" + "enco SQBFAFgA",
+        # the es5-ext exemption does not cover anything after the suffix
+        " " + NODE_E + " \"try{require('./_postinstall')}catch(e){}\" || exit 0 && "
+        + CURL + " x" + PIPE_SH,
     ],
 )
 def test_other_shapes_fire(script):
@@ -186,6 +238,14 @@ def test_other_shapes_fire(script):
         PS + " -File install.ps1",
         PS + " -ExecutionPolicy Bypass -File install.ps1",
         "node x.js -" + "enc y",
+        # es5-ext (I2): leading space, constant fallback suffix
+        " " + NODE_E + " \"try{require('./_postinstall')}catch(e){}\" || exit 0",
+        NODE_E + " \"try{require('./_postinstall')}catch(e){}\" || true",
+        NODE_E + "  \"require('./x')\"" + chr(9) + "||  exit 0 ",
+        # -Encoding / -Environment are not -EncodedCommand
+        PS + " -File x.ps1 -" + "Encoding utf8",
+        PS + " -File x.ps1 -" + "Environment prod",
+        PS + " -File x.ps1 -" + "encodedcommandx",
     ],
 )
 def test_benign_scripts_silent(script):
@@ -364,6 +424,14 @@ def test_yara_timeout_becomes_limits_exceeded(monkeypatch):
         "http:/",
         "https" + "://",
         "node " + " " * 9,
+        "node -r ",
+        "node -r x ",
+        "node --require " + "x" * 99 + " ",
+        "node -C x -x ",
+        "node" + chr(9) + NL + " ",
+        chr(9) + NL,
+        PS + " " + chr(0x2013),
+        " -" + "encodedcomman",
     ],
 )
 def test_ten_mib_newline_free_script_is_fast(unit):

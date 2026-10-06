@@ -36,10 +36,13 @@ class Member:
 # overlapped_entry (zip entries sharing a local header; still scanned),
 # dir_with_content (zip entry that looks like a directory but carries data or whose
 # stored and host-mapped names disagree; read and scanned as a regular member),
-# bad_package_json (an npm package.json that is not a UTF-8 JSON object; npm
-# would refuse it, so ESL-002 records nothing for it).
-# Only encrypted_member, unsupported_compression and bad_member mean "content not
-# scanned" and make the scan status "incomplete".
+# bad_package_json (a root npm package.json with a JSON syntax error or a non-object
+# root; npm refuses it, so ESL-002 records nothing for it; invalid UTF-8 is NOT
+# this: npm decodes with U+FFFD and so do we),
+# package_json_too_deep (a root package.json nested too deep for Python's json,
+# which V8's iterative parser reads fine: its scripts went unchecked).
+# Only encrypted_member, unsupported_compression, bad_member and
+# package_json_too_deep mean "content not scanned" and make the status "incomplete".
 @dataclass(frozen=True)
 class Anomaly:
     kind: str

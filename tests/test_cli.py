@@ -394,10 +394,9 @@ def test_metadata_is_sanitised(dirs):
         b"[1, 2]",
         b'{"name": 5, "version": "1"}',
         b'{"name": "x"}',
-        b"[" * 100_000,
         b"\xff\xfe\x00garbage",
     ],
-    ids=["syntax", "array", "non_str", "no_version", "deep_nesting", "bad_utf"],
+    ids=["syntax", "array", "non_str", "no_version", "bad_utf"],
 )
 def test_malformed_npm_metadata_is_no_metadata(dirs, body):
     target = _put(
@@ -407,6 +406,39 @@ def test_malformed_npm_metadata_is_no_metadata(dirs, body):
     s = _summary(_events(dirs[1]))
     assert "no_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
     assert s["package"]["name"] == "unknown"
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        b'{"name": "big", "version": "1.0.0", "n": ' + b"9" * 5000 + b"}",
+        b'{"name": "big", "version": "1.0.0", "description": "\xff\xc3("}',
+        b"\xef\xbb\xbf" + b'{"name": "big", "version": "1.0.0"}',
+    ],
+    ids=["huge_int", "invalid_utf8", "bom"],
+)
+def test_npm_metadata_parsed_like_npm(dirs, body):
+    # npm: JSON.parse(stripBOM(String(buffer))); String() replaces bad bytes
+    # and V8 accepts any number of digits, so the identity must survive.
+    target = _put(dirs, "m.tgz", make_tar([TarItem("package/package.json", body)]))
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    s = _summary(_events(dirs[1]))
+    assert s["package"] == {"name": "big", "version": "1.0.0"}
+    assert s["eslabon"]["scan"]["anomaly_kinds"] == []
+
+
+def test_npm_metadata_too_deep_is_incomplete(dirs):
+    # V8's JSON parser is iterative: npm reads this; Python cannot.
+    deep = b"[" * 100_000 + b"]" * 100_000
+    body = b'{"name": "d", "version": "1.0.0", "x": ' + deep + b"}"
+    target = _put(dirs, "m.tgz", make_tar([TarItem("package/package.json", body)]))
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 2
+    s = _summary(_events(dirs[1]))
+    sc = s["eslabon"]["scan"]
+    assert sc["status"] == "incomplete"
+    assert sc["anomaly_kinds"] == ["package_json_too_deep"]
+    assert sc["anomalies"] == 1  # recorded once, not by both readers
+    assert "package_json_too_deep" in scan.INCOMPLETE_KINDS
 
 
 @pytest.mark.parametrize(

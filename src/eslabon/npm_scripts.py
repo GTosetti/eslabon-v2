@@ -6,11 +6,12 @@ stored name, under ANY reading (``archive.path_readings``), is
 the side of scanning more, a rewritten or odd name is checked too, and every
 candidate gets its own finding.
 
-The file is parsed with ``json`` (last duplicate key wins, as with JSON.parse)
-and only ``scripts.preinstall``, ``scripts.install`` and ``scripts.postinstall``
-are matched, each as its own byte string, against the separately compiled
-``esl002`` namespace. A URL elsewhere in the file never fires. Nothing is ever
-executed; script text only reaches the output through ``clean_text``.
+The file is read the way npm reads it (``load_package_json``) and only
+``scripts.preinstall``, ``scripts.install`` and ``scripts.postinstall`` are
+matched, each as its own byte string with whitespace runs collapsed to one
+space, against the separately compiled ``esl002`` namespace. A URL elsewhere
+in the file never fires. Nothing is ever executed; script text only reaches
+the output through ``clean_text``.
 """
 
 from __future__ import annotations
@@ -34,17 +35,32 @@ from eslabon.model import (
 from eslabon.sanitize import clean_text, to_hex
 
 LIFECYCLE = ("preinstall", "install", "postinstall")
+BAD_PACKAGE_JSON = "bad_package_json"
+PACKAGE_JSON_TOO_DEEP = "package_json_too_deep"
+_DETAIL = {
+    BAD_PACKAGE_JSON: "package.json is not a JSON object; npm refuses it",
+    PACKAGE_JSON_TOO_DEEP: "package.json nests too deep for the parser; not read",
+}
 _TOP_PACKAGE_JSON = re.compile(r"[^/]+/package\.json")
-# core-js and friends: `node -e "try{require('./postinstall')}catch(e){}"`.
+# core-js and es5-ext: `node -e "try{require('./postinstall')}catch(e){}"`,
+# optionally followed by a constant `|| exit 0` / `|| true` (es5-ext).
 # Evaluating only a require() of a local file is `node file.js`, the shape
 # ESL-002 deliberately leaves to ESL-003/ESL-004 (design.md, residual gaps).
 # The path class has no ':' or quotes, so the script cannot carry anything else.
+# Matched (fullmatch) on the whitespace-collapsed script.
 _LOCAL_REQUIRE = re.compile(
     r"""node\s{1,10}(?:-e|--eval)\s{1,10}(["'])\s*(?:try\s*\{\s*)?"""
     r"""require\(\s*(["'])\.{1,2}/[\w./-]{1,200}\2\s*\)\s*;?\s*"""
     r"""(?:\}\s*catch\s*(?:\(\s*\w*\s*\))?\s*\{\s*\}\s*)?\1"""
+    r"""(?:\s*\|\|\s*(?:exit\s+0|true))?"""
 )
-_BAD_JSON = "package.json is not a UTF-8 JSON object; scripts not checked"
+# node options that take a separate value (case-sensitive, as node parses them).
+# Each match is one flag + one value token; matches never overlap, so a
+# 10 MiB script is one linear pass.
+_NODE_VALUE_FLAG = re.compile(
+    r"(?<![^ ])(-r|--require|--import|--loader|--experimental-loader|-C|--conditions)"
+    r" [^ -][^ ]*"
+)
 
 
 @functools.cache
@@ -58,18 +74,38 @@ def _is_top_package_json(m: Member) -> bool:
     return any(_TOP_PACKAGE_JSON.fullmatch(r) for r in readings)
 
 
-def _parse(data: bytes) -> dict | None:
-    """The JSON object, or None if npm could not read it either.
+def _text(data: bytes) -> str:
+    """npm's view of the bytes: String(buffer) (UTF-8, U+FFFD for invalid
+    sequences, never fails), then stripBOM (ONE leading U+FEFF)."""
+    text = data.decode("utf-8", errors="replace")
+    return text[1:] if text.startswith(chr(0xFEFF)) else text
 
-    Integers are not converted: Python refuses int strings over 4300 digits
-    where JSON.parse accepts them, which would hide the scripts.
+
+def load_package_json(data: bytes) -> tuple[dict | None, str | None]:
+    """Parse package.json as npm does: (object, None), or (None, anomaly kind).
+
+    npm reads it with JSON.parse(stripBOM(String(buffer))).
+    ``bad_package_json``: a JSON syntax error or a non-object root (npm refuses
+    the package). ``package_json_too_deep``: Python's recursive parser gave up
+    where V8's iterative one would not, so content went unread. Numbers are
+    not converted (Python refuses int strings over 4300 digits; JSON.parse does
+    not): each becomes its digit count; strings are untouched. The last
+    duplicate key wins, as with JSON.parse.
     """
     try:
-        text = data.decode("utf-8-sig")
-        doc = json.loads(text, parse_int=len, parse_constant=len)
-    except (ValueError, RecursionError):  # UnicodeDecodeError is a ValueError
-        return None
-    return doc if isinstance(doc, dict) else None
+        doc = json.loads(_text(data), parse_int=len, parse_constant=len)
+    except RecursionError:
+        return None, PACKAGE_JSON_TOO_DEEP
+    except ValueError:
+        return None, BAD_PACKAGE_JSON
+    if not isinstance(doc, dict):
+        return None, BAD_PACKAGE_JSON
+    return doc, None
+
+
+def package_json_anomaly(kind: str, raw: str) -> Anomaly:
+    """The anomaly for a ``load_package_json`` problem on member ``raw``."""
+    return Anomaly(kind, to_hex(raw), _DETAIL[kind])
 
 
 def _key_line(text: str, key: str) -> int:
@@ -82,6 +118,7 @@ def _key_line(text: str, key: str) -> int:
 
 
 def _count(script: str, ctx: ScanContext) -> int:
+    """Rule matches in an already whitespace-collapsed script."""
     data = script.encode("utf-8", errors="surrogatepass")
     try:
         matches = _script_rules().match(
@@ -106,25 +143,35 @@ def _count(script: str, ctx: ScanContext) -> int:
 
 def scan_package_json(m: Member, ctx: ScanContext) -> list[Finding]:
     """One ESL-002 Finding per top-level package.json whose lifecycle scripts
-    match; a malformed one records the ``bad_package_json`` anomaly."""
+    match; an unreadable one records its ``load_package_json`` anomaly."""
     if ctx.archive_kind != "npm" or not _is_top_package_json(m):
         return []
     raw = m.raw_path or m.path
-    doc = _parse(m.data)
+    doc, problem = load_package_json(m.data)
     if doc is None:
-        ctx.anomalies.append(Anomaly("bad_package_json", to_hex(raw), _BAD_JSON))
+        ctx.anomalies.append(package_json_anomaly(problem or BAD_PACKAGE_JSON, raw))
         return []
     scripts = doc.get("scripts")
     if not isinstance(scripts, dict):
         return []
 
     total, first = 0, None  # first = (line, script) of the earliest matching key
-    text = m.data.decode("utf-8-sig")  # decodes: _parse succeeded on it
+    text = _text(m.data)
     for key in LIFECYCLE:
         script = scripts.get(key)
-        if not isinstance(script, str) or _LOCAL_REQUIRE.fullmatch(script):
+        if not isinstance(script, str):
             continue
-        count = _count(script, ctx)
+        # padding must not push a token out of the bounded rule windows
+        flat = " ".join(script.split())
+        if _LOCAL_REQUIRE.fullmatch(flat):
+            continue
+        count = _count(flat, ctx)
+        if not count:
+            # node flags with a separate value (node -r x -e ...): rescan with
+            # the values dropped, so the rule's dash-only flag run sees them
+            bare = _NODE_VALUE_FLAG.sub(r"\1", flat)
+            if bare != flat:
+                count = _count(bare, ctx)
         if not count:
             continue
         total += count
