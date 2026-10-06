@@ -274,6 +274,17 @@ def test_benign_scripts_silent(script):
         "/usr/local/bin/nodejs --" + "eval 1",
         "$(" + "node -" + "p 1)",
         'node "-' + 'e" 1',
+        # N2: separators that sh treats as literal do not end the command
+        'node -r "a;b" -' + "e 1",
+        "node --title 'a|b' -" + "e 1",
+        'node --title="a&b" -' + "e 1",
+        "node -r x" + BS + ";y -" + "e 1",
+        'node --title "a' + BS + '";b" -' + "e 1",  # escaped quote stays inside
+        "node --title 'a;b -" + "e 1",  # unclosed quote runs to the end
+        "node --title 'a" + NL + "b' -" + "e 1",  # quoted line break
+        "node.cmd -" + "e 1",
+        "echo aWQ= | base64 -d | " + "node",
+        "cat x |" + "nodejs.exe",
     ],
 )
 def test_node_eval_token_rule_fires(script):
@@ -296,6 +307,11 @@ def test_node_eval_token_rule_fires(script):
         "node x.js --evaluate",
         "node x.js -ex",
         "echo -" + "e node",
+        "node 'a' && echo -" + "e done",  # closed quotes do not join commands
+        'node "a' + BS + BS + '" && echo -' + "e done",  # escaped backslash closes
+        "node x " + BS + BS + "; echo -" + "e x",  # escaped backslash, real ;
+        "cat x | node-gyp rebuild",
+        "node < x.txt",  # documented gap: stdin redirection
     ],
 )
 def test_node_eval_token_rule_silent(script):
@@ -487,6 +503,10 @@ def test_yara_timeout_becomes_limits_exceeded(monkeypatch):
         chr(9) + NL,
         'node "',
         "node -r x -",
+        '"a;b' + "' " + BS + ";",
+        "node " + '"a;b' + "' " + BS + BS + ";",
+        "node '" + BS,
+        "node " + BS + ";",
         "x;",
         "n",
         PS + " " + chr(0x2013),

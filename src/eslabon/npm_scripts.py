@@ -54,17 +54,18 @@ _LOCAL_REQUIRE = re.compile(
     r"""(?:\}\s*catch\s*(?:\(\s*\w*\s*\))?\s*\{\s*\}\s*)?\1"""
     r"""(?:\s*\|\|\s*(?:exit\s+0|true))?"""
 )
-# node -e / -p token rule (R35). A shell command is the text between two
-# separators (; & | or a line break; shell quoting is NOT parsed, so a separator
-# inside quotes may only end a command early). In one command, a node binary
-# word (node, nodejs, node.exe, nodejs.exe, optionally behind a / or \ path,
+# node -e / -p token rule (R35, R36). A shell command is the text between two
+# separators (; & | or a line break) that sh acts on: separators inside quotes
+# or after a backslash are blanked first (_blank_literal_separators). In one
+# command, a node binary word (node, nodejs, node.exe, nodejs.exe, node.cmd,
+# nodejs.cmd, optionally behind a / or \ path,
 # quotes, '(' '$' or '`') followed ANYWHERE later by an eval flag word (-e, -p,
 # -pe, -ep, --eval, --print, or --eval=/--print=...) fires. No option list
 # to keep complete: values of any shape and number may sit in between.
 # Linear: each command is entered once at its start (the lookbehind fails in
 # O(1) elsewhere) and both runs are atomic, so nothing is rescanned when a
 # command has a node word but no flag. Case-insensitive (NODE.EXE -E fires).
-_NODE_WORD = r"""(?<![^\s;&|"'`()$/\\])node(?:js)?(?:\.exe)?(?![^\s;&|"'`()])"""
+_NODE_WORD = r"""(?<![^\s;&|"'`()$/\\])node(?:js)?(?:\.exe|\.cmd)?(?![^\s;&|"'`()])"""
 _EVAL_FLAG = (
     r"""(?<![^\s"'`(])(?:-e|-p|-pe|-ep|--eval|--print)(?:=|(?![^\s;&|"'`)]))"""
 )
@@ -77,11 +78,33 @@ _NODE_EVAL = re.compile(
 )
 
 
+# Text in which POSIX sh treats ; & | and line breaks as literal characters:
+# '...' (no escapes), "..." (backslash escapes honoured) and a backslash-escaped
+# character outside quotes. An unclosed quote runs to the end. Every branch is
+# a single forward run with disjoint classes, so one finditer pass is linear.
+_SH_LITERAL = re.compile(
+    r"""'[^']*(?:'|\Z)"""
+    r'''|"[^"\\]*(?:\\[\s\S]?[^"\\]*)*(?:"|\Z)'''
+    r"""|\\[\s\S]"""
+)
+_SEPARATOR_TO_SPACE = str.maketrans({c: " " for c in ";&|\r\n"})
+
+
+def _blank_literal_separators(script: str) -> str:
+    """``script`` with the separators sh would not act on replaced by spaces.
+
+    Only ever joins commands, so the node token rule can only gain matches.
+    """
+    if not any(c in script for c in "'\"\\"):
+        return script
+    return _SH_LITERAL.sub(lambda m: m.group().translate(_SEPARATOR_TO_SPACE), script)
+
+
 def node_evals(script: str) -> int:
     """Shell commands in ``script`` that run node with inline code (-e/-p)."""
     if "node" not in script.lower():  # fast path: the full pass costs ~1.5 s/10 MiB
         return 0
-    return sum(1 for _ in _NODE_EVAL.finditer(script))
+    return sum(1 for _ in _NODE_EVAL.finditer(_blank_literal_separators(script)))
 
 
 @functools.cache

@@ -13,7 +13,9 @@
 // Tool names need a boundary that is not a word byte, '.' or '-' on both
 // sides (node-curl, scripts/curl.js, curl-config stay silent), but '/' and
 // '\' before them are fine (/usr/bin/curl). '.exe' is allowed after them.
-// The pipe must be a single '|' ('a || b' is a fallback, not a pipe).
+// The pipe must be a single '|' ('a || b' is a fallback, not a pipe). Pipe
+// targets include node/nodejs ('base64 -d | node' runs stdin as code);
+// 'node < file' (stdin redirection) is a documented gap.
 // Every window is bounded and each token run is followed by a disjoint
 // class ([^ ] then ' '), so 10 MiB newline-free scripts stay linear.
 // node -e / -p / --eval / --print is NOT matched here: npm_scripts applies a
@@ -52,7 +54,7 @@ rule esl002_pipe_to_shell
         esl_id = "ESL-002"
         description = "install script pipes into a shell"
     strings:
-        $pipe = /(^|[^|])\| ?(sudo )?([\w.\/-]{0,40}\/)?(sh|bash|zsh|dash|ksh|powershell|pwsh|cmd)(\.exe)?([^\w.-]|$)/ nocase
+        $pipe = /(^|[^|])\| ?(sudo )?([\w.\/-]{0,40}\/)?(sh|bash|zsh|dash|ksh|powershell|pwsh|cmd|node|nodejs)(\.exe|\.cmd)?([^\w.-]|$)/ nocase
     condition:
         $pipe
 }
