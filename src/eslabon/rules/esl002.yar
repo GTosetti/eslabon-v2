@@ -16,12 +16,11 @@
 // The pipe must be a single '|' ('a || b' is a fallback, not a pipe).
 // Every window is bounded and each token run is followed by a disjoint
 // class ([^ ] then ' '), so 10 MiB newline-free scripts stay linear.
-// node: up to 6 dash flags before -e/-p/--eval/--print. Flags that take a
-// separate value (-r x, --require x, --import x, --loader x,
-// --experimental-loader x, -C x, --conditions x) are handled by npm_scripts,
-// which rescans a copy with each such value dropped: a value token in this
-// regex let every 'node' hit chain over the next ones (20 s on 10 MiB of
-// 'node -r ').
+// node -e / -p / --eval / --print is NOT matched here: npm_scripts applies a
+// token rule (a node word, then an eval flag anywhere later in the same shell
+// command), because node options take values of any shape and number, and a
+// value window in a regex let every 'node' hit chain over the next ones
+// (20 s on 10 MiB of 'node -r ').
 // PowerShell: a flag that is a prefix of -EncodedCommand (-e, -ec, -en,
 // -enc, ...) or of -EncodedArguments, introduced by '-', '/' or an en dash,
 // em dash or horizontal bar (U+2013..U+2015, matched as UTF-8 bytes),
@@ -58,22 +57,21 @@ rule esl002_pipe_to_shell
         $pipe
 }
 
-rule esl002_inline_eval
+rule esl002_powershell_encoded
 {
     meta:
         esl_id = "ESL-002"
-        description = "install script evaluates inline code (node -e, powershell -enc)"
+        description = "install script runs PowerShell with an encoded command"
     strings:
-        $node = /(^|[^\w.-])node(js)?(\.exe)?( -[^ ]{1,40}){0,6} (-[ep]{1,2}|--eval|--print)([^\w-]|$)/ nocase
         $ps = /(^|[^\w.-])(powershell|pwsh)(\.exe)?([^\w.-]|$)/ nocase
         $enc_dash = / -e(c|n(c(o(d(e(d(c(o(m(m(a(n(d)?)?)?)?)?)?|a(r(g(u(m(e(n(t(s)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?([^\w-]|$)/ nocase
         $enc_slash = / \/e(c|n(c(o(d(e(d(c(o(m(m(a(n(d)?)?)?)?)?)?|a(r(g(u(m(e(n(t(s)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?([^\w-]|$)/ nocase
         $enc_udash = / \xe2\x80[\x93-\x95]e(c|n(c(o(d(e(d(c(o(m(m(a(n(d)?)?)?)?)?)?|a(r(g(u(m(e(n(t(s)?)?)?)?)?)?)?)?)?)?)?)?)?)?)?([^\w-]|$)/ nocase
     condition:
-        $node or ($ps and (
+        $ps and (
             @enc_dash[#enc_dash] > @ps[1] or
             @enc_slash[#enc_slash] > @ps[1] or
-            @enc_udash[#enc_udash] > @ps[1]))
+            @enc_udash[#enc_udash] > @ps[1])
 }
 
 rule esl002_url

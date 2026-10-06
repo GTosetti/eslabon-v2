@@ -54,13 +54,34 @@ _LOCAL_REQUIRE = re.compile(
     r"""(?:\}\s*catch\s*(?:\(\s*\w*\s*\))?\s*\{\s*\}\s*)?\1"""
     r"""(?:\s*\|\|\s*(?:exit\s+0|true))?"""
 )
-# node options that take a separate value (case-sensitive, as node parses them).
-# Each match is one flag + one value token; matches never overlap, so a
-# 10 MiB script is one linear pass.
-_NODE_VALUE_FLAG = re.compile(
-    r"(?<![^ ])(-r|--require|--import|--loader|--experimental-loader|-C|--conditions)"
-    r" [^ -][^ ]*"
+# node -e / -p token rule (R35). A shell command is the text between two
+# separators (; & | or a line break; shell quoting is NOT parsed, so a separator
+# inside quotes may only end a command early). In one command, a node binary
+# word (node, nodejs, node.exe, nodejs.exe, optionally behind a / or \ path,
+# quotes, '(' '$' or '`') followed ANYWHERE later by an eval flag word (-e, -p,
+# -pe, -ep, --eval, --print, or --eval=/--print=...) fires. No option list
+# to keep complete: values of any shape and number may sit in between.
+# Linear: each command is entered once at its start (the lookbehind fails in
+# O(1) elsewhere) and both runs are atomic, so nothing is rescanned when a
+# command has a node word but no flag. Case-insensitive (NODE.EXE -E fires).
+_NODE_WORD = r"""(?<![^\s;&|"'`()$/\\])node(?:js)?(?:\.exe)?(?![^\s;&|"'`()])"""
+_EVAL_FLAG = (
+    r"""(?<![^\s"'`(])(?:-e|-p|-pe|-ep|--eval|--print)(?:=|(?![^\s;&|"'`)]))"""
 )
+_IN_COMMAND = r"[^;&|\r\n]"
+_NODE_EVAL = re.compile(
+    r"(?:^|(?<=[;&|\r\n]))"
+    r"(?>(?:(?!" + _NODE_WORD + ")" + _IN_COMMAND + r")*)" + _NODE_WORD
+    + r"(?>(?:(?!" + _EVAL_FLAG + ")" + _IN_COMMAND + r")*)" + _EVAL_FLAG,
+    re.IGNORECASE,
+)
+
+
+def node_evals(script: str) -> int:
+    """Shell commands in ``script`` that run node with inline code (-e/-p)."""
+    if "node" not in script.lower():  # fast path: the full pass costs ~1.5 s/10 MiB
+        return 0
+    return sum(1 for _ in _NODE_EVAL.finditer(script))
 
 
 @functools.cache
@@ -165,13 +186,7 @@ def scan_package_json(m: Member, ctx: ScanContext) -> list[Finding]:
         flat = " ".join(script.split())
         if _LOCAL_REQUIRE.fullmatch(flat):
             continue
-        count = _count(flat, ctx)
-        if not count:
-            # node flags with a separate value (node -r x -e ...): rescan with
-            # the values dropped, so the rule's dash-only flag run sees them
-            bare = _NODE_VALUE_FLAG.sub(r"\1", flat)
-            if bare != flat:
-                count = _count(bare, ctx)
+        count = _count(flat, ctx) + node_evals(script)
         if not count:
             continue
         total += count

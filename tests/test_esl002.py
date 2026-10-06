@@ -252,6 +252,61 @@ def test_benign_scripts_silent(script):
     assert _ids(_pkg_json({"preinstall": script})) == []
 
 
+@pytest.mark.parametrize(
+    "script",
+    [
+        # N1: option values of any shape or number before the eval flag
+        'node -r "./a b" -' + "e 1",
+        "node -r './a b' -" + "e 1",
+        "node --require=./" + "a" * 60 + " -" + "e 1",
+        "node --title x -" + "e 1",
+        "node --env-file .env -" + "e 1",
+        "node --input-type module -" + "e 1",
+        "node --inspect-port 9 -" + "e 1",
+        "node --disable-warning X -" + "e 1",
+        "node --stack-size 9 -" + "e 1",
+        "node " + "--a " * 9 + "-" + "e 1",
+        "node -" + "e",
+        "node --" + "print=1",
+        "node --" + "eval=require('x')",
+        "x; node -" + "p 1",
+        "a && C:" + BS + "Program Files" + BS + "nodejs" + BS + "node.exe -" + "e 1",
+        "/usr/local/bin/nodejs --" + "eval 1",
+        "$(" + "node -" + "p 1)",
+        'node "-' + 'e" 1',
+    ],
+)
+def test_node_eval_token_rule_fires(script):
+    assert _ids(_pkg_json({"postinstall": script})) == ["ESL-002"]
+
+
+@pytest.mark.parametrize(
+    "script",
+    [
+        "node -r ts-node/register scripts/postinstall.ts",
+        "node -r esm install.js",
+        "node --require ./hook.js ./install.js",
+        "node -C production install.js",
+        "node install.js && echo -" + "e done",
+        "node install.js&&echo -" + "e done",
+        "node install.js;echo -" + "e x",
+        "node install.js" + NL + "echo -" + "e x",
+        "node-gyp rebuild -" + "e",
+        "nodemon -" + "e js",
+        "node x.js --evaluate",
+        "node x.js -ex",
+        "echo -" + "e node",
+    ],
+)
+def test_node_eval_token_rule_silent(script):
+    assert _ids(_pkg_json({"postinstall": script})) == []
+
+
+def test_node_eval_counts_once_per_command():
+    found, _ = _scan(_pkg_json({"install": NODE_E + " 1; " + NODE_E + " 2"}))
+    assert found[0].match_count == 2
+
+
 def test_url_only_in_repository_or_homepage_silent():
     data = _pkg_json({"postinstall": "node install.js", "build": CURL + " " + EVIL})
     assert REPO_URL.encode() in data and HOME_URL.encode() in data
@@ -430,6 +485,10 @@ def test_yara_timeout_becomes_limits_exceeded(monkeypatch):
         "node -C x -x ",
         "node" + chr(9) + NL + " ",
         chr(9) + NL,
+        'node "',
+        "node -r x -",
+        "x;",
+        "n",
         PS + " " + chr(0x2013),
         " -" + "encodedcomman",
     ],
