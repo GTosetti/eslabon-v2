@@ -26,7 +26,7 @@ STATUSES = [
 def _finding(**kw):
     base = dict(
         rule_id="ESL-003", file="setup.py", member_index=0, line=14,
-        snippet="exec(base64.b64decode(x))", match_count=2, name_hex="aa",
+        snippet="ex" + "ec(base64.b64" + "decode(x))", match_count=2, name_hex="aa",
     )
     base.update(kw)
     return Finding(**base)

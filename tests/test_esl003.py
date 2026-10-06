@@ -37,6 +37,8 @@ PAYLOAD_B64 = base64.b64encode(b"print('eslabon-fixture')").decode("ascii")
 EX = "ex" + "ec"
 EV = "ev" + "al"
 B64D = "b64" + "decode"
+LONG_B64 = base64.b64encode(b"print('eslabon-fixture')" * 4).decode("ascii")
+PAYLOAD_HEX = b"print('eslabon-fixture')".hex()
 
 
 def _py_setup() -> bytes:
@@ -104,6 +106,16 @@ def test_js_eval_atob_fires(ctx):
         "compile(base64.decode" + "bytes(x), 'f', 'exec')",
         "new Func" + "tion(Buffer.from(s, 'base" + "64').toString())()",
         "window." + EV + "  ( at" + "ob (s))",
+        # Buffer literal longer than 50 chars: the commonest npm shape
+        EV + "(Buffer.from('" + LONG_B64 + "', 'base" + "64').toString())",
+        EV + "(Buffer.from('" + PAYLOAD_HEX + "', 'hex').toString())",
+        "Function(Buffer.from(s, 'BASE" + "64').toString())()",
+        EX + "(base64.b32" + "decode(s))",
+        EX + "(binascii.a2b_" + "base64(s))",
+        EX + "(codecs." + "decode(s, 'rot13'))",
+        EX + "(lzma.decom" + "press(blob))",
+        EX + "(binascii.unhex" + "lify(s))",
+        EV + "(base64.a85" + "decode(s))",
     ],
 )
 def test_other_shapes_fire(ctx, src):
@@ -254,3 +266,41 @@ def test_whitespace_padded_evaluators_do_not_time_out(ctx):
     data = unit * (2 * 2**20 // len(unit))
     c = ScanContext(rules=ctx.rules, limits=Limits(yara_timeout_s=2), pkg=ctx.pkg)
     assert yara_engine.scan_member(_member("min.js", data), c) == []
+
+
+def test_black_formatted_call_fires(ctx):
+    nl = chr(10)
+    src = nl.join(
+        [
+            "import base64",
+            EX + "(",
+            "    base64." + B64D + "(",
+            "        '" + PAYLOAD_B64 + "'",
+            "    )",
+            ")",
+            "",
+        ]
+    )
+    found = yara_engine.scan_member(_member("setup.py", src.encode("ascii")), ctx)
+    assert [f.rule_id for f in found] == ["ESL-003"]
+    assert found[0].line == 2
+    crlf = src.replace(nl, chr(13) + nl).encode("ascii")
+    assert len(yara_engine.scan_member(_member("setup.py", crlf), ctx)) == 1
+
+
+def test_repo_carries_no_literal_pattern():
+    # Our own rule (and AV/GitHub scanners) would flag committed literals.
+    needles = [
+        ("ex" + "ec(base64").encode(),
+        ("ev" + "al(atob").encode(),
+        ("ev" + "al(Buffer.from").encode(),
+    ]
+    root = Path(__file__).parent.parent
+    hits = []
+    for sub in ("src", "tests"):
+        for p in (root / sub).rglob("*"):
+            if p.suffix not in (".py", ".yar", ".toml", ".json") or not p.is_file():
+                continue
+            data = p.read_bytes()
+            hits += [f"{p.name}: {n!r}" for n in needles if n in data]
+    assert hits == []
