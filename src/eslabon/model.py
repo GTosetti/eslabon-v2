@@ -23,13 +23,17 @@ class Limits:
 @dataclass(frozen=True)
 class Member:
     index: int  # order in archive
-    path: str  # normalised
+    path: str  # normalised (lossy: '..' dropped, drive stripped, '\' -> '/')
     data: bytes
+    raw_path: str = ""  # member name exactly as stored in the archive
 
 
 # Anomaly kinds: traversal, absolute_path, link_skipped, zip_symlink, duplicate_name,
 # encrypted_member, unsupported_compression, bad_member, unknown_type, weak_hash_sha1,
-# no_metadata
+# no_metadata, ambiguous_metadata, special_member (tar fifo/chr/blk: no content),
+# overlapped_entry (zip entries sharing a local header; still scanned).
+# Only encrypted_member, unsupported_compression and bad_member mean "content not
+# scanned" and make the scan status "incomplete".
 @dataclass(frozen=True)
 class Anomaly:
     kind: str

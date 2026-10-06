@@ -13,7 +13,14 @@ from pathlib import Path
 
 import jsonschema
 import pytest
-from builders import TarItem, ZipItem, make_tar, make_zip, zip_patch_member
+from builders import (
+    TarItem,
+    ZipItem,
+    make_tar,
+    make_zip,
+    zip_overlap_duplicates,
+    zip_patch_member,
+)
 
 import eslabon.cli as cli
 import eslabon.scan as scan
@@ -436,3 +443,238 @@ def test_analyze_archive_runs_in_worker_and_returns_metadata(dirs):
     assert result.status == "ok"
     assert (result.metadata_name, result.metadata_version) == ("left-pad", "1.3.0")
     assert result.files_scanned == 2
+
+
+# ------------------------------------------------------------- fix round 1 ----
+
+
+def _flag_evil(member, ctx):
+    if b"EVIL" not in member.data:
+        return []
+    return _one_finding(member, ctx)
+
+
+def _finding_snippets(events):
+    return [
+        e["eslabon"]["evidence"]["snippet"]
+        for e in events
+        if e["event"]["dataset"] == "eslabon.finding"
+    ]
+
+
+def test_r25_tar_traversal_copy_not_hidden_by_later_benign_copy(dirs, monkeypatch):
+    # pip writes "top/x/../setup.py" to top/setup.py; the lossy normalised path
+    # "top/x/setup.py" must not let the benign second member hide it.
+    _in_process(monkeypatch)
+    monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
+    data = make_tar(
+        [
+            TarItem("top/x/../setup.py", b"EVIL payload"),
+            TarItem("top/x/setup.py", b"benign"),
+        ]
+    )
+    target = _put(dirs, "evil-1.0.tar.gz", data)
+    assert _run(target, dirs[1], "--ecosystem", "pypi") == 1
+    events = _events(dirs[1])
+    assert _finding_snippets(events) == ["EVIL payload"]
+    assert _summary(events)["eslabon"]["scan"]["status"] == "ok"
+
+
+def test_r25_wheel_backslash_traversal_copy_is_kept(dirs, monkeypatch):
+    _in_process(monkeypatch)
+    monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
+    data = make_zip(
+        [
+            ZipItem("w/x/.." + chr(0x5C) + "__init__.py", b"EVIL payload"),
+            ZipItem("w/x/__init__.py", b"benign"),
+        ]
+    )
+    target = _put(dirs, "w-1.0-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 1
+    assert _finding_snippets(_events(dirs[1])) == ["EVIL payload"]
+
+
+def test_r25_identical_faithful_paths_still_collapse(dirs, monkeypatch):
+    _in_process(monkeypatch)
+    monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
+    data = make_zip(
+        [
+            ZipItem("w/a.py", b"EVIL first"),
+            ZipItem("w//./a.py", b"EVIL last"),  # same file once normalised
+        ]
+    )
+    target = _put(dirs, "w-1.0-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 1
+    assert _finding_snippets(_events(dirs[1])) == ["EVIL last"]
+
+
+def _wheel_meta(name: str) -> bytes:
+    return f"Metadata-Version: 2.1\nName: {name}\nVersion: 1\n\n".encode()
+
+
+def test_r26_wheel_second_dist_info_metadata_is_ambiguous(dirs):
+    data = make_zip(
+        [
+            ZipItem("requestz-1.dist-info/METADATA", _wheel_meta("requestz")),
+            ZipItem("zzz.dist-info/METADATA", _wheel_meta("totally-benign")),
+        ]
+    )
+    target = _put(dirs, "requestz-1-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 0
+    s = _summary(_events(dirs[1]))
+    assert s["package"]["name"] == "unknown"
+    kinds = s["eslabon"]["scan"]["anomaly_kinds"]
+    assert "ambiguous_metadata" in kinds and "no_metadata" not in kinds
+
+
+def test_r26_wheel_conflicting_dist_info_dirs_are_ambiguous(dirs):
+    data = make_zip(
+        [
+            ZipItem("requestz-1.dist-info/METADATA", _wheel_meta("requestz")),
+            ZipItem("other-2.dist-info/RECORD", b""),
+        ]
+    )
+    target = _put(dirs, "requestz-1-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 0
+    s = _summary(_events(dirs[1]))
+    assert s["package"]["name"] == "unknown"
+    assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
+
+
+def test_r26_wheel_ignores_pkg_info(dirs):
+    data = make_zip(
+        [
+            ZipItem("requestz-1.dist-info/METADATA", _wheel_meta("requestz")),
+            ZipItem("w/PKG-INFO", _wheel_meta("totally-benign")),
+        ]
+    )
+    target = _put(dirs, "requestz-1-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 0
+    s = _summary(_events(dirs[1]))
+    assert s["package"] == {"name": "requestz", "version": "1"}
+    assert "ambiguous_metadata" not in s["eslabon"]["scan"]["anomaly_kinds"]
+
+
+def test_r26_sdist_ignores_dist_info_metadata(dirs):
+    data = make_tar(
+        [
+            TarItem("real-1/PKG-INFO", _wheel_meta("real")),
+            TarItem("real-1/zzz.dist-info/METADATA", _wheel_meta("fake")),
+        ]
+    )
+    target = _put(dirs, "real-1.tar.gz", data)
+    assert _run(target, dirs[1], "--ecosystem", "pypi") == 0
+    assert _summary(_events(dirs[1]))["package"]["name"] == "real"
+
+
+def test_r26_sdist_two_pkg_info_is_ambiguous(dirs):
+    data = make_tar(
+        [
+            TarItem("real-1/PKG-INFO", _wheel_meta("real")),
+            TarItem("fake-9/PKG-INFO", _wheel_meta("fake")),
+        ]
+    )
+    target = _put(dirs, "real-1.tar.gz", data)
+    assert _run(target, dirs[1], "--ecosystem", "pypi") == 0
+    s = _summary(_events(dirs[1]))
+    assert s["package"]["name"] == "unknown"
+    assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
+
+
+def test_r26_npm_bare_package_json_is_ignored(dirs):
+    data = make_tar([TarItem("package.json", PKG_JSON)])  # strip:1 drops it
+    target = _put(dirs, "bare.tgz", data)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    s = _summary(_events(dirs[1]))
+    assert s["package"]["name"] == "unknown"
+    assert "no_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
+
+
+def test_r26_npm_two_package_json_is_ambiguous(dirs):
+    other = b'{"name": "totally-benign", "version": "9"}'
+    data = make_tar(
+        [
+            TarItem("package/package.json", PKG_JSON),
+            TarItem("evil/package.json", other),
+        ]
+    )
+    target = _put(dirs, "two.tgz", data)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    s = _summary(_events(dirs[1]))
+    assert s["package"]["name"] == "unknown"
+    assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
+
+
+def test_summary_written_when_worker_launch_raises(dirs, monkeypatch, capsys):
+    def boom(fn, args, timeout_s):
+        raise OSError("spawn failed")
+
+    monkeypatch.setattr(cli, "run_isolated", boom)
+    target = _put(dirs, "clean.tgz", CLEAN_TGZ)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 2
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert sc["status"] == "parse_error"
+    assert sc["error"] == "worker error: OSError"
+    assert "Traceback" not in capsys.readouterr().err
+
+
+def test_summary_written_when_finding_has_unknown_rule(dirs, monkeypatch):
+    def bad_rule(member, ctx):
+        return [
+            Finding(
+                rule_id="ESL-999", file=member.path, member_index=member.index,
+                line=1, snippet="", match_count=1, name_hex="",
+            )
+        ]
+
+    _in_process(monkeypatch)
+    monkeypatch.setattr(scan, "ANALYZERS", [bad_rule])
+    target = _put(dirs, "clean.tgz", CLEAN_TGZ)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 2
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert sc["status"] == "parse_error"
+    assert sc["error"] == "event error: KeyError"
+
+
+def test_real_worker_timeout_exit_2(dirs, monkeypatch):
+    monkeypatch.setattr(cli, "Limits", lambda: Limits(worker_timeout_s=0.001))
+    target = _put(dirs, "clean.tgz", CLEAN_TGZ)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 2
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert sc["status"] == "timeout"
+
+
+def test_no_metadata_not_added_when_status_not_ok(dirs):
+    big = make_tar([TarItem("package/big.js", b"\0" * (Limits().max_file + 1))])
+    target = _put(dirs, "big.tgz", big)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 2
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert sc["status"] == "limits_exceeded"
+    assert "no_metadata" not in sc["anomaly_kinds"]
+
+
+def test_overlapped_zip_entry_is_not_incomplete(dirs):
+    data = make_zip(
+        [
+            ZipItem("pkg-1.dist-info/METADATA", _wheel_meta("pkg")),
+            ZipItem("pkg/a.py", b"same"),
+            ZipItem("pkg/a.py", b"same"),
+        ]
+    )
+    data = zip_overlap_duplicates(data, "pkg/a.py")
+    target = _put(dirs, "pkg-1-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 0
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert sc["status"] == "ok"
+    assert "overlapped_entry" in sc["anomaly_kinds"]
+
+
+def test_fifo_in_sdist_is_not_incomplete(dirs):
+    data = make_tar(
+        [TarItem("p-1/PKG-INFO", _wheel_meta("p")), TarItem("p-1/fifo", type="fifo")]
+    )
+    target = _put(dirs, "p-1.tar.gz", data)
+    assert _run(target, dirs[1], "--ecosystem", "pypi") == 0
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert sc["status"] == "ok"
+    assert "special_member" in sc["anomaly_kinds"]

@@ -9,11 +9,12 @@ extracted to disk and no package code is ever imported or executed.
 from __future__ import annotations
 
 import json
+import posixpath
 import re
 from collections.abc import Callable
 from pathlib import Path
 
-from eslabon.archive import TarStats, iter_members
+from eslabon.archive import TarStats, iter_members, normalize_path
 from eslabon.model import (
     Anomaly,
     Finding,
@@ -50,6 +51,7 @@ _SDIST_PKG_INFO = re.compile(r"[^/]+/PKG-INFO")
 _WHEEL_METADATA = re.compile(r"[^/]+\.dist-info/METADATA")
 _LINE_BREAK = re.compile(r"\r\n|\r|\n")
 _NO_METADATA = "no package metadata found"
+_AMBIGUOUS = "several candidate metadata files or .dist-info dirs"
 
 _rules_cache: object | None = None
 
@@ -119,26 +121,99 @@ def parse_metadata(m: Member, ecosystem: str) -> tuple[str, str] | None:
     return _parse_rfc822(m.data)
 
 
+def faithful_key(raw: str, ecosystem: str) -> str:
+    """Where an installer really writes ``raw``: backslash -> '/', then normpath.
+
+    npm drops the first component (node-tar strip:1). Only meaningful for names
+    that normalisation did not rewrite (see ``_rewritten``).
+    """
+    p = posixpath.normpath(raw.replace(chr(0x5C), "/"))
+    if ecosystem == "npm":
+        parts = p.split("/")
+        if len(parts) > 1:
+            p = "/".join(parts[1:])
+    return p
+
+
+def _rewritten(raw: str, ecosystem: str) -> bool:
+    """True if normalisation had to rewrite the name (traversal, absolute, drive)."""
+    return bool(normalize_path(raw, ecosystem)[1])
+
+
+class _MetadataPicker:
+    """Choose the metadata file by archive kind; refuse to guess between several.
+
+    wheel (zip, pypi): only ``<x>.dist-info/METADATA``, with exactly one
+    ``.dist-info`` dir in the archive. sdist (tar, pypi): only
+    ``<single top dir>/PKG-INFO``. npm: only a ``package.json`` whose raw path
+    has exactly two components (a bare ``package.json`` is dropped by strip:1).
+    Members whose names were rewritten by normalisation are never candidates.
+    """
+
+    def __init__(self, ecosystem: str) -> None:
+        self.ecosystem = ecosystem
+        self.mode = ""  # decided on the first member, once the container is known
+        self.candidates: list[tuple[str, str] | None] = []
+        self.dirs: set[str] = set()
+
+    def see(self, m: Member, raw: str, rewritten: bool, archive_kind: str) -> None:
+        if not self.mode:
+            if self.ecosystem == "npm":
+                self.mode = "npm"
+            else:
+                self.mode = "wheel" if archive_kind == "zip" else "sdist"
+        if rewritten:
+            return
+        parts = posixpath.normpath(raw.replace(chr(0x5C), "/")).split("/")
+        if self.mode == "wheel":
+            if parts[0].endswith(".dist-info"):
+                self.dirs.add(parts[0])
+            wanted = len(parts) == 2 and parts[0].endswith(".dist-info")
+            wanted = wanted and parts[1] == "METADATA"
+        elif self.mode == "sdist":
+            self.dirs.add(parts[0])
+            wanted = len(parts) == 2 and parts[1] == "PKG-INFO"
+        else:
+            wanted = len(parts) == 2 and parts[1] == "package.json"
+        if wanted:
+            self.candidates.append(parse_metadata(m, self.ecosystem))
+
+    def result(self) -> tuple[str, str] | None | str:
+        """(name, version), None (nothing usable) or "ambiguous"."""
+        if len(self.candidates) > 1:
+            return "ambiguous"
+        if self.mode == "wheel" and len(self.dirs) > 1:
+            return "ambiguous"
+        if self.mode == "sdist" and self.candidates and len(self.dirs) > 1:
+            return "ambiguous"
+        return self.candidates[0] if self.candidates else None
+
+
 def analyze_archive(path: Path, pkg: PackageRef, limits: Limits) -> ScanResult:
     """Read every member once, run ANALYZERS and collect metadata.
 
-    Duplicate normalised paths follow last-copy-wins (that is the copy an
-    installer leaves on disk): findings from earlier copies are dropped.
+    Duplicates follow last-copy-wins (the copy an installer leaves on disk), but
+    only when it is certain they land on the same file: same ``faithful_key``
+    and neither name rewritten by normalisation. Otherwise every finding stays.
     """
+    eco = pkg.ecosystem
     ctx = ScanContext(rules=_get_rules(), limits=limits, pkg=pkg)
     anomalies: list[Anomaly] = []
     findings: list[Finding] = []
     stats = TarStats()
-    index_path: dict[int, str] = {}
+    index_key: dict[int, str] = {}  # only members whose landing place is certain
     last_index: dict[str, int] = {}
-    meta: tuple[str, str] | None = None
+    picker = _MetadataPicker(eco)
     status, error = "ok", None
     try:
-        for m in iter_members(path, pkg.ecosystem, limits, anomalies, stats=stats):
-            index_path[m.index] = m.path
-            last_index[m.path] = m.index
-            if _is_metadata_path(m.path, pkg.ecosystem):
-                meta = parse_metadata(m, pkg.ecosystem)  # last copy wins here too
+        for m in iter_members(path, eco, limits, anomalies, stats=stats):
+            raw = m.raw_path or m.path
+            rewritten = _rewritten(raw, eco)
+            if not rewritten:
+                key = faithful_key(raw, eco)
+                index_key[m.index] = key
+                last_index[key] = m.index
+            picker.see(m, raw, rewritten, stats.kind)
             for analyze in ANALYZERS:
                 findings.extend(analyze(m, ctx))
     except LimitsExceeded as exc:
@@ -146,16 +221,19 @@ def analyze_archive(path: Path, pkg: PackageRef, limits: Limits) -> ScanResult:
     except ParseError as exc:
         status, error = "parse_error", str(exc)
 
-    def is_last_copy(f: Finding) -> bool:
-        if f.member_index < 0:  # package-level finding
-            return True
-        return last_index.get(index_path.get(f.member_index, "")) == f.member_index
+    def superseded(f: Finding) -> bool:
+        key = index_key.get(f.member_index)
+        return key is not None and last_index[key] != f.member_index
 
-    findings = [f for f in findings if is_last_copy(f)]
-    if meta is None:
-        anomalies.append(Anomaly(kind="no_metadata", path_hex="", detail=_NO_METADATA))
+    findings = [f for f in findings if not superseded(f)]
     if any(a.kind in INCOMPLETE_KINDS for a in anomalies):
         status = worst_status(status, "incomplete")
+    meta = picker.result()
+    if meta == "ambiguous":
+        anomalies.append(Anomaly("ambiguous_metadata", "", _AMBIGUOUS))
+        meta = None
+    elif meta is None and status == "ok":
+        anomalies.append(Anomaly(kind="no_metadata", path_hex="", detail=_NO_METADATA))
     return ScanResult(
         status=status,
         findings=findings,

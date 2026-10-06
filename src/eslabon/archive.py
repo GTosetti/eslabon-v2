@@ -43,6 +43,7 @@ class TarStats:
 
     bytes_read: int = 0
     files_scanned: int = 0
+    kind: str = ""  # container detected by iter_members: "zip", "gz", "bz2", ...
 
 
 def normalize_path(raw: str, ecosystem: str) -> tuple[str, list[str]]:
@@ -212,6 +213,7 @@ def iter_members(
     stats = stats if stats is not None else TarStats()
     with open(path, "rb") as raw:
         kind = _detect(raw)
+        stats.kind = kind
         reader = None
         try:
             if kind == "zip":
@@ -388,7 +390,9 @@ def _read_zip_member(
         warnings.simplefilter("always")
         body = _read_zip_member_body(zf, info, limits, anomalies, stats)
     if any("Overlapped entries" in str(w.message) for w in caught):
-        anomalies.append(_anomaly("bad_member", info.filename, "overlapped entries"))
+        anomalies.append(
+            _anomaly("overlapped_entry", info.filename, "overlapped entries")
+        )
     return body
 
 
@@ -475,7 +479,7 @@ def _iter_zip(
             if body is None:
                 continue
             stats.files_scanned += 1
-            yield Member(index=index, path=norm, data=body)
+            yield Member(index=index, path=norm, data=body, raw_path=info.filename)
 
 
 _META_TYPES = (
@@ -579,6 +583,11 @@ def _iter_tar(
             # an unrecognised typeflag as a regular file, so it must be scanned.
             unknown = m.type not in tarfile.SUPPORTED_TYPES
             sparse = m.sparse is not None or m.type == tarfile.GNUTYPE_SPARSE
+            if not unknown and (m.isfifo() or m.ischr() or m.isblk()):
+                # Special files carry no content: nothing was left unscanned.
+                detail = f"special member type {m.type!r} not read"
+                anomalies.append(_anomaly("special_member", m.name, detail))
+                continue
             if not unknown and (not m.isreg() or sparse):
                 detail = f"unsupported member type {m.type!r}"
                 anomalies.append(_anomaly("bad_member", m.name, detail))
@@ -598,7 +607,7 @@ def _iter_tar(
             if len(data) > limits.max_file:
                 raise LimitsExceeded(f"member larger than {limits.max_file}")
             stats.files_scanned += 1
-            yield Member(index=index, path=norm, data=data)
+            yield Member(index=index, path=norm, data=data, raw_path=m.name)
         _check_end_of_archive(tar, state)
     finally:
         tar.close()

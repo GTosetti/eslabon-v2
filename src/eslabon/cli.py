@@ -21,7 +21,7 @@ from eslabon.catalog import load_catalog
 from eslabon.emit import finding_event, summary_event, write_events
 from eslabon.model import Limits, PackageRef, ScanResult
 from eslabon.sanitize import clean_text
-from eslabon.scan import analyze_archive
+from eslabon.scan import analyze_archive, worst_status
 from eslabon.worker import run_isolated
 
 _CHUNK = 1 * 2**20
@@ -107,27 +107,48 @@ def _scan(args: argparse.Namespace) -> int:
         except OSError as exc:
             raise UsageError(f"cannot read target: {type(exc).__name__}") from exc
         request = PackageRef(None, None, ecosystem, sha)
-        result = run_isolated(
-            analyze_archive,
-            (target, request, limits),
-            timeout_s=limits.worker_timeout_s,
-        )
+        try:
+            result = run_isolated(
+                analyze_archive,
+                (target, request, limits),
+                timeout_s=limits.worker_timeout_s,
+            )
+        except Exception as exc:  # e.g. spawn/pickling failure: still summarise
+            result = _failed(f"worker error: {type(exc).__name__}")
         pkg = PackageRef(result.metadata_name, result.metadata_version, ecosystem, sha)
     # --offline is accepted but changes nothing yet: OSV is never queried and
     # osv_status stays "skipped" either way (OSV lookups arrive in a later task).
 
-    catalog = load_catalog()
     now = datetime.now(UTC)
-    events = [
-        finding_event(f, catalog[f.rule_id], pkg, scan_id, now)
-        for f in result.findings
-    ]
-    events.append(summary_event(result, pkg, scan_id, now))
+    # Findings first, then the summary, written separately: whatever goes wrong
+    # with the findings, the summary is still attempted and reports it.
     try:
-        write_events(events, args.out)
+        catalog = load_catalog()
+        findings = [
+            finding_event(f, catalog[f.rule_id], pkg, scan_id, now)
+            for f in result.findings
+        ]
+        if findings:
+            write_events(findings, args.out)
+    except Exception as exc:
+        _downgrade(result, f"event error: {type(exc).__name__}")
+    try:
+        write_events([summary_event(result, pkg, scan_id, now)], args.out)
     except (OSError, ValueError) as exc:
         raise UsageError(f"cannot write events: {type(exc).__name__}") from exc
     return exit_code(result.status, len(result.findings))
+
+
+def _failed(error: str) -> ScanResult:
+    return ScanResult(status="parse_error", findings=[], anomalies=[], error=error)
+
+
+def _downgrade(result: ScanResult, error: str) -> None:
+    """Mark ``result`` as failed (parse_error unless something worse already)."""
+    worse = worst_status(result.status, "parse_error")
+    if worse != result.status or result.error is None:
+        result.error = error
+    result.status = worse
 
 
 def main(argv: list[str] | None = None) -> int:

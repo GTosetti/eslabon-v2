@@ -112,13 +112,21 @@ def test_symlink_and_hardlink_skipped_and_counted(workdir):
         _run(path, limits=Limits(max_members=2))
 
 
-def test_device_and_fifo_are_bad_members(workdir):
+def test_device_and_fifo_are_special_members(workdir):
+    # R24: they carry no content, so they are not "content that was not scanned".
     path = _write(
-        workdir, make_tar([TarItem("f", type="fifo"), TarItem("d", type="chr")])
+        workdir,
+        make_tar(
+            [
+                TarItem("f", type="fifo"),
+                TarItem("d", type="chr"),
+                TarItem("b", type="blk"),
+            ]
+        ),
     )
     members, anomalies = _run(path)
     assert members == []
-    assert _kinds(anomalies) == ["bad_member", "bad_member"]
+    assert _kinds(anomalies) == ["special_member"] * 3
 
 
 def test_duplicate_name_flagged(workdir):
@@ -485,9 +493,29 @@ def test_unknown_typeflag_duplicate_tracked(workdir):
     assert sorted(_kinds(anomalies)) == ["duplicate_name", "unknown_type"]
 
 
-def test_fifo_member_still_bad_member(workdir):
+def test_fifo_member_still_special_member(workdir):
     raw = ustar_member("pkg-1.0/fifo", b"", b"6") + END
     path = _write(workdir, raw)
     members, anomalies = _run(path)
     assert members == []
+    assert _kinds(anomalies) == ["special_member"]
+
+
+def test_gnu_sparse_member_stays_bad_member(workdir):
+    raw = ustar_member("pkg-1.0/sparse.py", b"", b"S") + END
+    path = _write(workdir, raw)
+    members, anomalies = _run(path)
+    assert members == []
     assert _kinds(anomalies) == ["bad_member"]
+
+
+def test_member_keeps_raw_name(workdir):
+    path = _write(
+        workdir,
+        make_tar([TarItem("top/x/../setup.py", b"1"), TarItem(r"top\a.py", b"2")]),
+    )
+    members, _ = _run(path)
+    assert [(m.path, m.raw_path) for m in members] == [
+        ("top/x/setup.py", "top/x/../setup.py"),
+        ("top/a.py", r"top\a.py"),
+    ]

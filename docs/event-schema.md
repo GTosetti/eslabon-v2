@@ -66,20 +66,41 @@ When several statuses apply, the first one in this list wins:
 `timeout` > `limits_exceeded` > `parse_error` > `hash_mismatch` > `fetch_error` >
 `incomplete` > `osv_unavailable` > `ok`.
 
-`incomplete` means the archive was read to the end but some content was not scanned: an
-anomaly of kind `encrypted_member`, `unsupported_compression` or `bad_member` was recorded.
+`incomplete` means content existed that was not scanned: an anomaly of kind
+`encrypted_member`, `unsupported_compression` or `bad_member` (a member whose read failed,
+or a GNU sparse tar member) was recorded. These anomaly kinds do **not** make a scan
+incomplete: `special_member` (tar FIFO, character or block device: no content) and
+`overlapped_entry` (zip entries sharing one local header: the data was read and scanned).
 
 Exit code of `eslabon scan`: 2 for every status other than `ok` (and for any usage or IO
 error), 1 if the status is `ok` and there are findings, 0 otherwise.
 
 ## Package metadata of a local archive
 
-Name and version are read during the same streaming pass that scans the members:
-sdist `<top dir>/PKG-INFO` and wheel `<name>.dist-info/METADATA` (RFC 822 `Name:` /
-`Version:` headers), npm top-level `package.json` (`name` / `version`). If a metadata file
-appears more than once, the last copy wins. The values are attacker-controlled. If none is
-found or it is malformed, the summary lists the anomaly kind `no_metadata`, and
-`package.name` is `unknown`.
+Name and version are read during the same streaming pass that scans the members. The
+metadata file is chosen by archive kind, and Eslabon refuses to guess:
+
+- wheel (zip, pypi): only `<x>.dist-info/METADATA` (RFC 822 `Name:` / `Version:`), and the
+  archive must contain exactly one `.dist-info` directory;
+- sdist (tar, pypi): only `<single top dir>/PKG-INFO` (same headers), and the archive must
+  have a single top-level directory;
+- npm: only a `package.json` whose raw path has exactly two components
+  (`package/package.json`); a bare top-level `package.json` is ignored, because npm strips
+  the first component.
+
+Members whose names were rewritten by normalisation (traversal, absolute path) are never
+candidates. More than one candidate, or several `.dist-info` directories, gives the anomaly
+kind `ambiguous_metadata` and no name. No candidate, or a malformed one, gives `no_metadata`
+(only when the scan status is otherwise `ok`). In both cases `package.name` is `unknown`.
+The values are attacker-controlled.
+
+## Duplicate members
+
+When two members land on the same file, only the findings of the last copy are reported
+(that is the copy an installer leaves on disk). "Same file" uses the raw member name with
+`\` turned into `/` and then `posixpath.normpath` (npm: first component dropped), and only
+applies when neither name was rewritten by normalisation. Otherwise the findings of every
+copy are kept.
 
 ## Versioning
 
