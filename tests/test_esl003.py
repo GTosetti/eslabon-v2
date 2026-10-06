@@ -174,7 +174,7 @@ def test_rules_compile_with_error_on_warning():
         assert r.meta.get("esl_id", "").startswith("ESL-")
     rule_dir = Path(yara_engine.__file__).parent / "rules"
     files = sorted(rule_dir.glob("*.yar"))
-    assert [p.stem for p in files] == ["esl003"]
+    assert [p.stem for p in files] == ["esl001", "esl003"]
     for p in files:
         yara.compile(filepath=str(p), error_on_warning=True)
         assert p.read_bytes().isascii()

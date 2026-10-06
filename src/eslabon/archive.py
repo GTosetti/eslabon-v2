@@ -64,6 +64,18 @@ def normalize_path(raw: str, ecosystem: str) -> tuple[str, list[str]]:
     return ("/".join(parts) or "_", kinds)
 
 
+def is_rewritten(raw: str, ecosystem: str) -> bool:
+    """True if the landing place of ``raw`` is uncertain.
+
+    That is: normalisation had to rewrite it (traversal, absolute, drive), or it
+    contains a backslash (a separator on Windows, a literal character on POSIX)
+    or a NUL (some tools cut the name there).
+    """
+    if chr(0x5C) in raw or chr(0) in raw:  # NUL: truncated by some readers
+        return True
+    return bool(normalize_path(raw, ecosystem)[1])
+
+
 class _CountingReader:
     """File-like .read(n) over a raw file, optionally decompressing gzip/bz2.
 

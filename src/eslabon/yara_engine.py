@@ -8,15 +8,20 @@ are only matched against, never decoded beyond the sanitised snippet.
 
 from __future__ import annotations
 
+import re
 from importlib import resources
 
 import yara
 
+from eslabon.archive import is_rewritten
 from eslabon.model import Finding, LimitsExceeded, Member, ParseError, ScanContext
 from eslabon.sanitize import clean_text, to_hex
 
 _BEFORE = 120  # snippet context before the first match
 _AFTER = 200  # and after it
+# Namespaces whose matches only count in the setup.py pip runs (ESL-001).
+_SETUP_PY_ONLY = frozenset({"esl001"})
+_SETUP_PY = re.compile(r"(?:[^/]+/)?setup\.py")
 
 
 def _leading_space(matched: bytes) -> int:
@@ -24,6 +29,15 @@ def _leading_space(matched: bytes) -> int:
     line break): the finding points at the first byte after them, so ``line``
     is the line of the evaluator, not of the preceding break."""
     return len(matched) - len(matched.lstrip())
+
+
+def is_install_setup_py(m: Member, ctx: ScanContext) -> bool:
+    """True for the setup.py pip would run: a PyPI archive, normalised path
+    ``setup.py`` or ``<top dir>/setup.py``, and a name that normalisation did
+    not rewrite (no traversal, absolute path, backslash or NUL)."""
+    if ctx.pkg.ecosystem != "pypi" or not _SETUP_PY.fullmatch(m.path):
+        return False
+    return not is_rewritten(m.raw_path or m.path, "pypi")
 
 
 def compile_rules() -> yara.Rules:
@@ -50,7 +64,13 @@ def scan_member(m: Member, ctx: ScanContext) -> list[Finding]:
         raise ParseError(f"yara error: {type(exc).__name__}") from exc
 
     merged: dict[str, tuple[int, int]] = {}  # esl_id -> (first offset, count)
+    setup_py: bool | None = None  # computed lazily, only if needed
     for match in matches:
+        if match.namespace in _SETUP_PY_ONLY:
+            if setup_py is None:
+                setup_py = is_install_setup_py(m, ctx)
+            if not setup_py:
+                continue
         esl_id = match.meta["esl_id"]
         for s in match.strings:
             for inst in s.instances:

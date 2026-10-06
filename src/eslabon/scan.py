@@ -15,7 +15,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from eslabon import yara_engine
-from eslabon.archive import TarStats, iter_members, normalize_path
+from eslabon.archive import TarStats, is_rewritten, iter_members, normalize_path
 from eslabon.model import (
     Anomaly,
     Finding,
@@ -128,19 +128,6 @@ def parse_metadata(m: Member, ecosystem: str) -> tuple[str, str] | None:
     return _parse_rfc822(m.data)
 
 
-def _rewritten(raw: str, ecosystem: str) -> bool:
-    """True if the landing place of ``raw`` is uncertain.
-
-    That is: normalisation had to rewrite it (traversal, absolute, drive), or it
-    contains a backslash (a separator on Windows, a literal character on POSIX)
-    or a NUL (some tools cut the name there).
-    Such members are never metadata candidates.
-    """
-    if chr(0x5C) in raw or chr(0) in raw:  # NUL: truncated by some readers
-        return True
-    return bool(normalize_path(raw, ecosystem)[1])
-
-
 class _MetadataPicker:
     """Choose the metadata file by archive kind; refuse to guess between several.
 
@@ -220,7 +207,7 @@ def analyze_archive(path: Path, pkg: PackageRef, limits: Limits) -> ScanResult:
     try:
         for m in iter_members(path, eco, limits, anomalies, stats=stats):
             raw = m.raw_path or m.path
-            picker.see(m, raw, _rewritten(raw, eco), stats.kind)
+            picker.see(m, raw, is_rewritten(raw, eco), stats.kind)
             for analyze in ANALYZERS:
                 findings.extend(analyze(m, ctx))
     except LimitsExceeded as exc:
