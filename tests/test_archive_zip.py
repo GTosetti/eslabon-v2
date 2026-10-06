@@ -13,6 +13,7 @@ from builders import (
     zip_patch_crc,
     zip_patch_eocd,
     zip_patch_member,
+    zip_rename,
 )
 
 import eslabon.archive as archive_mod
@@ -376,3 +377,13 @@ def test_memory_error_becomes_limits_exceeded(workdir, monkeypatch):
     monkeypatch.setattr(archive_mod, "normalize_path", boom)
     with pytest.raises(LimitsExceeded):
         _run(path)
+
+
+def test_zip_raw_path_is_stored_name_not_host_mapped(workdir):
+    # zipfile maps os.sep to "/" in .filename on Windows; raw_path must not.
+    raw = "a/b" + chr(0x5C) + "c.py"
+    data = make_zip([ZipItem("a/bXc.py", b"x")])
+    data = zip_rename(data, "a/bXc.py", raw.encode("ascii"))
+    path = _write(workdir, data)
+    members, _ = _run(path)
+    assert [(m.path, m.raw_path) for m in members] == [("a/b/c.py", raw)]

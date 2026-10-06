@@ -96,6 +96,12 @@ kind `ambiguous_metadata` and no name. No candidate, or a malformed one, gives `
 (only when the scan status is otherwise `ok`). In both cases `package.name` is `unknown`.
 The values are attacker-controlled.
 
+Zip names are judged as stored in the archive (`ZipInfo.orig_filename`), never as the
+scanner's host OS maps them, so the verdict is the same on Windows and POSIX. A malformed,
+Windows-built wheel that uses `\` as a separator may therefore get
+`ambiguous_metadata`. That stays an anomaly; the status remains `ok`. A NUL in a member
+name is treated like a rewritten name.
+
 ## Duplicate members
 
 When two members land on the same file, only the findings of the last copy are reported

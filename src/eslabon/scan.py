@@ -140,10 +140,13 @@ def _rewritten(raw: str, ecosystem: str) -> bool:
     """True if the landing place of ``raw`` is uncertain.
 
     That is: normalisation had to rewrite it (traversal, absolute, drive), or it
-    contains a backslash (a separator on Windows, a literal character on POSIX).
+    contains a backslash (a separator on Windows, a literal character on POSIX)
+    or a NUL (some tools cut the name there).
     Such members never take part in last-copy-wins and are never metadata.
     """
-    return chr(0x5C) in raw or bool(normalize_path(raw, ecosystem)[1])
+    if chr(0x5C) in raw or chr(0) in raw:  # NUL: truncated by some readers
+        return True
+    return bool(normalize_path(raw, ecosystem)[1])
 
 
 class _MetadataPicker:

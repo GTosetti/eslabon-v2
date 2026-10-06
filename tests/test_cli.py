@@ -20,6 +20,7 @@ from builders import (
     make_zip,
     zip_overlap_duplicates,
     zip_patch_member,
+    zip_rename,
 )
 
 import eslabon.cli as cli
@@ -536,6 +537,68 @@ def test_r27_backslash_copy_does_not_hide_finding(dirs, monkeypatch, eco, items)
     events = _events(dirs[1])
     assert _finding_snippets(events) == ["EVIL payload"]
     assert _summary(events)["eslabon"]["scan"]["status"] == "ok"
+
+
+def _orig_names(data: bytes) -> list[str]:
+    import io
+    import zipfile
+
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        return [i.orig_filename for i in zf.infolist()]
+
+
+def test_r28_zip_true_backslash_copy_does_not_hide_finding(dirs, monkeypatch):
+    # On a Windows host zipfile rewrites "\" to "/" in .filename; the scanner
+    # must decide on the stored name (orig_filename), whatever its host OS.
+    _in_process(monkeypatch)
+    monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
+    data = make_zip(
+        [
+            ZipItem("w/pkg/__init__.py", b"EVIL payload"),
+            ZipItem("w/pkgX__init__.py", b"ok"),
+        ]
+    )
+    stored = ("w/pkg" + BS + "__init__.py").encode("ascii")
+    data = zip_rename(data, "w/pkgX__init__.py", stored)
+    assert BS in _orig_names(data)[1]  # really stored with a backslash
+    target = _put(dirs, "w-1.0-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 1
+    events = _events(dirs[1])
+    assert _finding_snippets(events) == ["EVIL payload"]
+    assert _summary(events)["eslabon"]["scan"]["status"] == "ok"
+
+
+def test_r28_zip_nul_in_name_is_treated_as_rewritten(dirs, monkeypatch):
+    # zipfile truncates .filename at NUL, so "w/a.py\0" would look like "w/a.py".
+    _in_process(monkeypatch)
+    monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
+    data = make_zip(
+        [ZipItem("w/a.py", b"EVIL payload"), ZipItem("w/a.pyZ", b"ok")]
+    )
+    data = zip_rename(data, "w/a.pyZ", b"w/a.py" + bytes([0]))
+    assert _orig_names(data)[1] == "w/a.py" + chr(0)
+    target = _put(dirs, "w-1.0-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 1
+    assert _finding_snippets(_events(dirs[1])) == ["EVIL payload"]
+
+
+def test_r28_zip_backslash_dist_info_metadata_is_ambiguous(dirs):
+    data = make_zip(
+        [
+            ZipItem("w-1.0.dist-info/METADATA", b"Name: w\nVersion: 1.0\n"),
+            ZipItem("w-1.0.dist-infoXMETADATA", b"Name: spoof\nVersion: 9\n"),
+        ]
+    )
+    data = zip_rename(
+        data, "w-1.0.dist-infoXMETADATA", b"w-1.0.dist-info" + BS.encode() + b"METADATA"
+    )
+    assert BS in _orig_names(data)[1]
+    target = _put(dirs, "w-1.0-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 0
+    s = _summary(_events(dirs[1]))
+    assert s["package"]["name"] == "unknown"
+    assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
+    assert s["eslabon"]["scan"]["status"] == "ok"
 
 
 def test_r27_backslash_metadata_candidate_is_ambiguous(dirs):

@@ -232,3 +232,18 @@ def zip_overlap_duplicates(data: bytes, name: str) -> bytes:
     for _, central in entries[1:]:
         struct.pack_into("<L", buf, central + 42, first_local)
     return bytes(buf)
+
+
+def zip_rename(data: bytes, old: str, new: bytes) -> bytes:
+    """Overwrite the stored name of entry `old` with raw bytes `new` (same length)
+    in both the local and the central header. zipfile.writestr on Windows turns
+    a backslash into "/", so this is the only way to store a real backslash (or
+    a NUL) in a name; zipfile keeps it verbatim in ZipInfo.orig_filename."""
+    raw_old = old.encode("ascii")
+    if len(new) != len(raw_old):
+        raise ValueError("new name must have the same length")
+    buf = bytearray(data)
+    for local, central in _entry_offsets(data, old):
+        buf[local + 30 : local + 30 + len(new)] = new
+        buf[central + 46 : central + 46 + len(new)] = new
+    return bytes(buf)

@@ -391,7 +391,7 @@ def _read_zip_member(
         body = _read_zip_member_body(zf, info, limits, anomalies, stats)
     if any("Overlapped entries" in str(w.message) for w in caught):
         anomalies.append(
-            _anomaly("overlapped_entry", info.filename, "overlapped entries")
+            _anomaly("overlapped_entry", info.orig_filename, "overlapped entries")
         )
     return body
 
@@ -408,6 +408,7 @@ def _read_zip_member_body(
     Bytes count against max_total as they are produced, including those of
     members that fail later (e.g. on a bad CRC), so failures are not free.
     """
+    raw_name = info.orig_filename  # stored name, not the host-mapped .filename
     buf = bytearray()
     try:
         for chunk in _zip_chunks(zf, info, limits):
@@ -420,14 +421,14 @@ def _read_zip_member_body(
     except (MemoryError, RecursionError):
         raise
     except NotImplementedError as exc:  # subclass of RuntimeError: keep first
-        anomalies.append(_anomaly("unsupported_compression", info.filename, str(exc)))
+        anomalies.append(_anomaly("unsupported_compression", raw_name, str(exc)))
         return None
     except RuntimeError as exc:
         kind = "encrypted_member" if info.flag_bits & 0x1 else "bad_member"
-        anomalies.append(_anomaly(kind, info.filename, type(exc).__name__))
+        anomalies.append(_anomaly(kind, raw_name, type(exc).__name__))
         return None
     except _BAD_MEMBER_ERRORS as exc:
-        anomalies.append(_anomaly("bad_member", info.filename, type(exc).__name__))
+        anomalies.append(_anomaly("bad_member", raw_name, type(exc).__name__))
         return None
     return bytes(buf)
 
@@ -461,25 +462,29 @@ def _iter_zip(
             raise LimitsExceeded(f"more than {limits.max_members} members")
         seen: dict[str, int] = {}
         for index, info in enumerate(infos):
-            if info.is_dir():
-                continue
+            # Decide on the name as stored: on Windows zipfile maps os.sep ("\\") to
+            # "/" in .filename (and truncates at NUL), so .filename would make the
+            # verdict depend on the scanner's host OS. Hence orig_filename here.
+            name = info.orig_filename
+            if name.endswith("/"):
+                continue  # directory entry (ZipInfo.is_dir, on the stored name)
             if stat.S_ISLNK(info.external_attr >> 16):
                 # pip ignores zip symlink bits and writes the entry as a regular
                 # file, so it must be scanned, not skipped (unlike tar links).
-                anomalies.append(_anomaly("zip_symlink", info.filename, _ZIP_SYMLINK))
-            norm, kinds = normalize_path(info.filename, ecosystem)
+                anomalies.append(_anomaly("zip_symlink", name, _ZIP_SYMLINK))
+            norm, kinds = normalize_path(name, ecosystem)
             for k in kinds:
-                anomalies.append(_anomaly(k, info.filename, _DETAILS[k]))
+                anomalies.append(_anomaly(k, name, _DETAILS[k]))
             if norm in seen:
                 anomalies.append(
-                    _anomaly("duplicate_name", info.filename, "normalised name repeats")
+                    _anomaly("duplicate_name", name, "normalised name repeats")
                 )
             seen[norm] = index
             body = _read_zip_member(zf, info, limits, anomalies, stats)
             if body is None:
                 continue
             stats.files_scanned += 1
-            yield Member(index=index, path=norm, data=body, raw_path=info.filename)
+            yield Member(index=index, path=norm, data=body, raw_path=name)
 
 
 _META_TYPES = (
