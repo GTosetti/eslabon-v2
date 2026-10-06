@@ -220,7 +220,10 @@ enforces it. Every emitted line is validated in tests. A change of meaning bumps
   A pax header can make a member name megabytes long.
 - For a local archive, `package.name` and `package.version` are read from inside it (sdist
   `PKG-INFO`, wheel `METADATA`, npm `package.json`). They are attacker-controlled. If they
-  are absent, the anomaly `no_metadata` is recorded and ESL-005 and ESL-006 are skipped.
+  are absent, the anomaly `no_metadata` is recorded and ESL-006 is skipped. ESL-005 falls
+  back to the name in the archive's file name (`eslabon.identity_source: filename`), so
+  breaking the metadata does not switch it off; if both names exist and differ, both are
+  checked and `identity_mismatch` is recorded (docs/event-schema.md).
 - Arrays hold strings only. The Wazuh JSON decoder keeps string arrays but does not support
   arrays of objects.
 
@@ -331,8 +334,12 @@ Operational rules:
   name only (no download): every name ranked 5,001–6,000 in each ecosystem's list.
 - **No package-name allowlists.** A false positive is fixed in the rule or published as a
   known false positive; suppressing a popular name to hit "0" would be gaming the metric.
-- The npm list's source is chosen and recorded in E4, because ESL-005 needs it there. The
-  candidate is `npm-high-impact`, to be verified before use.
+- The npm list's source was chosen in E4 (Task 13): `npm-high-impact`
+  (`lib/top.js`, wooorm/npm-high-impact, regenerated from ecosyste.ms data): most downloaded
+  first, then packages ranked by number of dependents; 15,113 names, so ranks 5,001-6,000
+  exist. `scripts/update_top_lists.py` parses that JS array as text, never evaluates it.
+  The PyPI list is `top-pypi-packages` (30-day downloads). Both bundled files record their
+  source URL and retrieval date.
 
 **Lab measurement (E7):** three layers, counted separately.
 

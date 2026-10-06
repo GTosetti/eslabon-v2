@@ -99,6 +99,8 @@ def summary_event(r: ScanResult, pkg: PackageRef, scan_id: str, now: datetime) -
     if r.error is not None:
         scan["error"] = clean_text(r.error, _PATH_CAP)
     ev["eslabon"]["scan"] = scan
+    if r.identity_source is not None:
+        ev["eslabon"]["identity_source"] = r.identity_source
     return ev
 
 

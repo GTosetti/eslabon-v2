@@ -81,6 +81,7 @@
         "attack_version": {"type": "string"},
         "ecosystem": {"enum": ["pypi", "npm"]},
         "scan_id": {"type": "string"},
+        "identity_source": {"enum": ["metadata", "filename", "argument"]},
         "evidence": {
           "type": "object",
           "additionalProperties": false,

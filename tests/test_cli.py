@@ -889,3 +889,153 @@ def test_r28_zip_nul_slash_dir_with_content_keeps_finding(dirs, monkeypatch):
     sc = _summary(events)["eslabon"]["scan"]
     assert "dir_with_content" in sc["anomaly_kinds"]
     assert sc["files_scanned"] == 1
+
+
+# ------------------------------------------------------------- ESL-005 ----
+
+
+def _install_top(monkeypatch, pypi: list[str], npm: list[str]) -> None:
+    from eslabon import typosquat
+
+    monkeypatch.setattr(
+        typosquat,
+        "_OVERRIDE",
+        {
+            "pypi": typosquat.TopList.from_names(pypi, "pypi"),
+            "npm": typosquat.TopList.from_names(npm, "npm"),
+        },
+    )
+
+
+def _esl005(events: list[dict]) -> list[dict]:
+    return [e for e in events if e.get("rule", {}).get("id") == "ESL-005"]
+
+
+def test_esl005_e2e_reqeusts_sdist(dirs, monkeypatch):
+    _install_top(monkeypatch, ["boto3", "requests", "numpy"], ["react"])
+    pkg_info = b"Metadata-Version: 2.1\nName: reqeusts\nVersion: 1.0\n\n"
+    data = make_tar([TarItem("reqeusts-1.0/PKG-INFO", pkg_info)])
+    target = _put(dirs, "reqeusts-1.0.tar.gz", data)
+    assert _run(target, dirs[1], "--ecosystem", "pypi") == 1
+    events = _events(dirs[1])
+    hits = _esl005(events)
+    assert len(hits) == 1
+    ev = hits[0]["eslabon"]["evidence"]
+    assert ev["file"] == "reqeusts" and ev["line"] == 0
+    assert ev["snippet"] == "reqeusts ~ requests (distance 1)"
+    assert hits[0]["event"]["severity"] == 5
+    s = _summary(events)
+    assert s["eslabon"]["identity_source"] == "metadata"
+    assert s["eslabon"]["scan"]["findings"] == 1
+    assert "identity_mismatch" not in s["eslabon"]["scan"]["anomaly_kinds"]
+
+
+def test_esl005_no_metadata_wheel_falls_back_to_filename(dirs, monkeypatch):
+    _install_top(monkeypatch, ["requests"], [])
+    data = make_zip([ZipItem("reqeusts/__init__.py", b"")])
+    target = _put(dirs, "reqeusts-1.0-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 1
+    events = _events(dirs[1])
+    hits = _esl005(events)
+    assert [h["eslabon"]["evidence"]["file"] for h in hits] == ["reqeusts"]
+    s = _summary(events)
+    assert s["eslabon"]["identity_source"] == "filename"
+    assert s["package"]["name"] == "unknown"  # package.name stays metadata-only
+    assert "no_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
+
+
+def test_esl005_ambiguous_metadata_falls_back_to_filename(dirs, monkeypatch):
+    _install_top(monkeypatch, ["requests"], [])
+    data = make_zip(
+        [
+            ZipItem("a-1.dist-info/METADATA", _wheel_meta("a")),
+            ZipItem("b-1.dist-info/METADATA", _wheel_meta("b")),
+        ]
+    )
+    target = _put(dirs, "requestz-1-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 1
+    events = _events(dirs[1])
+    assert [h["eslabon"]["evidence"]["file"] for h in _esl005(events)] == ["requestz"]
+    s = _summary(events)
+    assert s["eslabon"]["identity_source"] == "filename"
+    assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
+
+
+def test_esl005_metadata_filename_mismatch_checks_both(dirs, monkeypatch):
+    _install_top(monkeypatch, ["requests", "numpy"], [])
+    data = make_zip([ZipItem("nunpy-1.dist-info/METADATA", _wheel_meta("nunpy"))])
+    target = _put(dirs, "reqeusts-1-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 1
+    events = _events(dirs[1])
+    snippets = sorted(h["eslabon"]["evidence"]["snippet"] for h in _esl005(events))
+    assert snippets == [
+        "nunpy ~ numpy (distance 1)", "reqeusts ~ requests (distance 1)"
+    ]
+    s = _summary(events)
+    assert s["eslabon"]["identity_source"] == "metadata"
+    assert s["package"]["name"] == "nunpy"
+    sc = s["eslabon"]["scan"]
+    assert "identity_mismatch" in sc["anomaly_kinds"]
+    assert sc["status"] == "ok"  # a mismatch is not "incomplete"
+
+
+def test_esl005_mismatch_without_hit_is_only_an_anomaly(dirs, monkeypatch):
+    _install_top(monkeypatch, ["requests"], [])
+    data = make_zip([ZipItem("alpha-1.dist-info/METADATA", _wheel_meta("alpha"))])
+    target = _put(dirs, "omega-1-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 0
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert sc["anomaly_kinds"] == ["identity_mismatch"]
+
+
+def test_esl005_pep503_equal_names_are_no_mismatch(dirs, monkeypatch):
+    _install_top(monkeypatch, ["requests"], [])
+    data = make_zip(
+        [ZipItem("Typing_Ext-1.dist-info/METADATA", _wheel_meta("Typing.Ext"))]
+    )
+    target = _put(dirs, "typing_ext-1-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 0
+    sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
+    assert "identity_mismatch" not in sc["anomaly_kinds"]
+
+
+@pytest.mark.parametrize("filename", ["evil-react-1.0.0.tgz", "react-1.0.0.tgz"])
+def test_esl005_scoped_npm_pack_name_is_no_mismatch(dirs, monkeypatch, filename):
+    # npm pack names @evil/react evil-react-1.0.0.tgz; the registry, react-1.0.0.tgz
+    _install_top(monkeypatch, [], ["react"])
+    body = b'{"name": "@evil/react", "version": "1.0.0"}'
+    target = _put(dirs, filename, make_tar([TarItem("package/package.json", body)]))
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 1
+    events = _events(dirs[1])
+    assert [h["eslabon"]["evidence"]["snippet"] for h in _esl005(events)] == [
+        "@evil/react ~ react (scope confusion)"
+    ]
+    sc = _summary(events)["eslabon"]["scan"]
+    assert "identity_mismatch" not in sc["anomaly_kinds"]
+
+
+def test_esl005_no_name_at_all_has_no_identity_source(dirs, monkeypatch):
+    _install_top(monkeypatch, [], ["react"])
+    target = _put(dirs, "anon.tgz", make_tar([TarItem("package/index.js", b"x")]))
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    s = _summary(_events(dirs[1]))
+    assert "identity_source" not in s["eslabon"]
+
+
+def test_esl005_top_name_not_flagged_end_to_end(dirs, monkeypatch):
+    _install_top(monkeypatch, [], ["left-pad", "left-pan"])
+    target = _put(dirs, "left-pad-1.3.0.tgz", CLEAN_TGZ)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 0
+    s = _summary(_events(dirs[1]))
+    assert s["eslabon"]["identity_source"] == "metadata"
+
+
+def test_esl005_runs_even_when_archive_too_big(dirs, monkeypatch):
+    # identity is independent of content: the filename is checked without opening it
+    _install_top(monkeypatch, [], ["react"])
+    monkeypatch.setattr(cli, "Limits", lambda: Limits(max_download=10))
+    target = _put(dirs, "raect-1.0.0.tgz", CLEAN_TGZ)
+    assert _run(target, dirs[1], "--ecosystem", "npm") == 2
+    events = _events(dirs[1])
+    assert len(_esl005(events)) == 1
+    assert _summary(events)["eslabon"]["identity_source"] == "filename"

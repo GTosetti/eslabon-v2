@@ -40,7 +40,9 @@ class Member:
 # root; npm refuses it, so ESL-002 records nothing for it; invalid UTF-8 is NOT
 # this: npm decodes with U+FFFD and so do we),
 # package_json_too_deep (a root package.json nested too deep for Python's json,
-# which V8's iterative parser reads fine: its scripts went unchecked).
+# which V8's iterative parser reads fine: its scripts went unchecked),
+# identity_mismatch (the metadata name and the name in the archive's file name
+# differ after normalisation; both are checked by ESL-005; added by the cli).
 # Only encrypted_member, unsupported_compression, bad_member and
 # package_json_too_deep mean "content not scanned" and make the status "incomplete".
 @dataclass(frozen=True)
@@ -95,6 +97,9 @@ class ScanResult:
     error: str | None = None
     metadata_name: str | None = None
     metadata_version: str | None = None
+    # where the name checked by ESL-005 came from: "metadata" | "filename" |
+    # "argument"; None when no name was available. Set by the cli, not the worker.
+    identity_source: str | None = None
 
 
 class LimitsExceeded(Exception):

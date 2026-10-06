@@ -17,11 +17,12 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from eslabon import typosquat
 from eslabon.catalog import load_catalog
 from eslabon.emit import finding_event, summary_event, write_events
-from eslabon.model import Limits, PackageRef, ScanResult
+from eslabon.model import Anomaly, Limits, PackageRef, ScanResult
 from eslabon.sanitize import clean_text
-from eslabon.scan import analyze_archive, worst_status
+from eslabon.scan import analyze_archive, archive_kind, worst_status
 from eslabon.worker import run_isolated
 
 _CHUNK = 1 * 2**20
@@ -116,6 +117,10 @@ def _scan(args: argparse.Namespace) -> int:
         except Exception as exc:  # e.g. spawn/pickling failure: still summarise
             result = _failed(f"worker error: {type(exc).__name__}")
         pkg = PackageRef(result.metadata_name, result.metadata_version, ecosystem, sha)
+    try:
+        _identity_checks(target, ecosystem, result)
+    except Exception as exc:  # e.g. a missing or corrupt bundled top list
+        _downgrade(result, f"typosquat error: {type(exc).__name__}")
     # --offline is accepted but changes nothing yet: OSV is never queried and
     # osv_status stays "skipped" either way (OSV lookups arrive in a later task).
 
@@ -137,6 +142,38 @@ def _scan(args: argparse.Namespace) -> int:
     except (OSError, ValueError) as exc:
         raise UsageError(f"cannot write events: {type(exc).__name__}") from exc
     return exit_code(result.status, len(result.findings))
+
+
+_MISMATCH = "metadata name and archive file name differ"
+
+
+def _identity_checks(target: Path, ecosystem: str, result: ScanResult) -> None:
+    """Run the package-level identity rule (ESL-005) once, in the parent.
+
+    The name comes from the archive metadata; if there is none (no_metadata,
+    ambiguous_metadata, or the worker never ran) it falls back to the name in
+    the archive's FILE name, so an attacker cannot switch the rule off by
+    breaking the metadata. If both exist and differ, both are checked and the
+    anomaly identity_mismatch is recorded.
+    """
+    meta = result.metadata_name
+    from_file = typosquat.name_from_filename(
+        target.name, archive_kind(target, ecosystem)
+    )
+    names: list[str] = []
+    if meta:
+        names.append(meta)
+        result.identity_source = "metadata"
+        if from_file and not typosquat.same_identity(meta, from_file, ecosystem):
+            names.append(from_file)
+            result.anomalies.append(Anomaly("identity_mismatch", "", _MISMATCH))
+    elif from_file:
+        names.append(from_file)
+        result.identity_source = "filename"
+    for name in names:
+        finding = typosquat.check(name, ecosystem)
+        if finding is not None and finding not in result.findings:
+            result.findings.append(finding)
 
 
 def _failed(error: str) -> ScanResult:

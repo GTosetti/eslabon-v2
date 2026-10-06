@@ -299,6 +299,13 @@ _SKIP_DIRS = {
     ".venv", ".git", "__pycache__", ".superpowers", ".pytest_cache", ".ruff_cache",
     "build", "dist",
 }
+# Repo files that legitimately do what a rule detects. Each entry names the rule
+# that fires and why; the file is still matched, and only that rule is excused.
+_EXPECTED_HITS = {
+    # downloads the two top-name JSON lists for ESL-005 with urllib: a real
+    # network call, which is exactly what esl001_py_network is meant to report
+    "scripts/update_top_lists.py": {"esl001_py_network"},
+}
 
 
 def test_repo_files_do_not_trip_the_rules():
@@ -320,8 +327,11 @@ def test_repo_files_do_not_trip_the_rules():
                 continue
             data = path.read_bytes()
             # the same post-filter the engine applies (ESL-004 public-IP check)
-            if any(yara_engine.counted_offsets(x) for x in rules.match(data=data)):
-                hits.append(path.relative_to(root).as_posix())
+            rel = path.relative_to(root).as_posix()
+            excused = _EXPECTED_HITS.get(rel, set())
+            matched = [x for x in rules.match(data=data) if x.rule not in excused]
+            if any(yara_engine.counted_offsets(x) for x in matched):
+                hits.append(rel)
             if name == "package.json":
                 m = Member(0, "package.json", data, "package/package.json")
                 pkg = PackageRef(None, None, "npm", "")
@@ -338,3 +348,12 @@ def test_line_is_the_evaluator_line_not_the_preceding_break(ctx):
     assert found[0].line == 2
     found = yara_engine.scan_member(_member("a.py", src[6:].encode("ascii")), ctx)
     assert found[0].line == 1  # evaluator at offset 0 (start of data)
+
+
+def test_expected_repo_hits_are_not_stale():
+    # an excuse that no longer matches must be removed, not kept "just in case"
+    rules = yara_engine.compile_rules()
+    root = Path(__file__).parent.parent
+    for rel, excused in _EXPECTED_HITS.items():
+        fired = {m.rule for m in rules.match(data=(root / rel).read_bytes())}
+        assert excused <= fired, (rel, excused - fired)

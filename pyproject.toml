@@ -20,7 +20,7 @@ eslabon = "eslabon.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-eslabon = ["catalog.toml", "rules/*.yar"]
+eslabon = ["catalog.toml", "rules/*.yar", "data/*.json"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

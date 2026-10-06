@@ -46,6 +46,7 @@ no BOM, and always under 65,536 bytes.
 | `eslabon.attack_version` | string | `19.2` | no |
 | `eslabon.ecosystem` | string | `pypi` or `npm` | no |
 | `eslabon.scan_id` | string | Identifier shared by all events of one scan | no |
+| `eslabon.identity_source` | string | Summary only, **optional**: where the package name checked by ESL-005 came from: `metadata`, `filename` (metadata missing or ambiguous, so the archive's file name was used) or `argument` (a `name==version` target). Absent when no name was available | no |
 | `eslabon.evidence.file` | string | Findings only: the **inner** file that matched. Max 512 chars | yes |
 | `eslabon.evidence.line` | integer | Findings only: line number of the match | no |
 | `eslabon.evidence.snippet` | string | Findings only: matched text. Max 1,024 chars | yes |
@@ -111,6 +112,26 @@ scanner's host OS maps them, so the verdict is the same on Windows and POSIX. A 
 Windows-built wheel that uses `\` as a separator may therefore get
 `ambiguous_metadata`. That stays an anomaly; the status remains `ok`. A NUL in a member
 name is treated like a rewritten name.
+
+## Package identity and ESL-005
+
+ESL-005 (typosquat) is a package-level rule: it runs once per scan, in the parent
+process after the worker returns, on the name the package claims to be. Its finding has
+`eslabon.evidence.file` = the checked name, `line` = 0 and a snippet
+`"<name> ~ <target> (distance N)"` or `"<name> ~ <target> (scope confusion)"`.
+
+An attacker can switch identity checks off by breaking the metadata (`no_metadata`,
+`ambiguous_metadata`). So when the metadata gives no name, ESL-005 falls back to the name in
+the archive's **file** name (wheel: the first `-` field of `{name}-{ver}-...whl`; sdist and
+npm: the suffix `.tar.gz`/`.tgz`/`.tar.bz2`/`.zip` is stripped and the name ends at the
+last `-` followed by a digit). `eslabon.identity_source` records which one was used.
+`package.name` stays metadata-only (`unknown` in that case).
+
+If both names exist and differ after normalisation (PEP 503 for PyPI; for npm a scoped
+`@scope/name` matches a file named `name-<ver>.tgz` or `scope-name-<ver>.tgz`), **both** are
+checked and the anomaly kind `identity_mismatch` is recorded. It does not make the scan
+`incomplete`. Names longer than 214 characters (npm's maximum) are not checked: they cannot
+be within distance 2 of a top-1,000 name.
 
 ## Duplicate members
 
