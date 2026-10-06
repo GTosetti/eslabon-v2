@@ -49,10 +49,12 @@ EXPECTED_LEAF = {
     "scan-incomplete.jsonl": "100311",
     "scan-osv-unavailable.jsonl": "100311",
 }
-# the subset of OS_Regex whose meaning is identical in Python re: literals,
-# anchors and an escaped dot. Anything richer would make the model below lie.
-_SAFE_REGEX = re.compile(r"^\^?(?:[A-Za-z0-9_-]|\\\.)+\$?$")
-_SAFE_LOCATION = re.compile(r"^(?:[A-Za-z0-9_/-]|\\\.|\.)+\$?$")
+# pcre2 <field> regexes the model evaluates with Python re: literals, anchors
+# and an escaped dot mean the same in both. Anything richer would let it lie.
+_SAFE_PCRE2 = re.compile(r"^\^?(?:[A-Za-z0-9_-]|\\\.)+\$?$")
+# OS_Regex (the <field> default) reads "\." as ANY character, so an osregex
+# field may only hold plain literals and anchors (where re agrees with it).
+_SAFE_OSREGEX = re.compile(r"^\^?[A-Za-z0-9_-]+\$?$")
 
 
 # ------------------------------------------------------------ the model ----
@@ -75,6 +77,7 @@ def _model() -> dict[str, dict]:
             "level": int(r.get("level")),
             "parent": r.findtext("if_sid"),
             "fields": fields,
+            "ftypes": [f.get("type", "osregex") for f in r.findall("field")],
             "location": r.findtext("location"),
             "decoded_as": r.findtext("decoded_as"),
             "mitre": [m.text for m in r.findall("mitre/id")],
@@ -94,11 +97,35 @@ def _value(event: dict, dotted: str) -> str | None:
     return str(cur)
 
 
+def _osmatch(pattern: str, text: str) -> bool:
+    """OS_Match, the <location> default: literal and case-insensitive. Per "|"
+    alternative only a leading ^ (prefix) and a trailing $ (suffix) are
+    special; a backslash is an ordinary character, not an escape."""
+    text = text.lower()
+    for alt in pattern.lower().split("|"):
+        start = alt.startswith("^")
+        end = alt.endswith("$") and len(alt) > int(start)
+        core = alt[int(start) : len(alt) - int(end)]
+        if start and end:
+            hit = text == core
+        elif start:
+            hit = text.startswith(core)
+        elif end:
+            hit = text.endswith(core)
+        else:
+            hit = core in text
+        if hit:
+            return True
+    return False
+
+
 def _own_match(rule: dict, event: dict, location: str, decoder: str) -> bool:
     if rule["decoded_as"] is not None and rule["decoded_as"] != decoder:
         return False
-    if rule["location"] is not None and not re.search(rule["location"], location):
+    if rule["location"] is not None and not _osmatch(rule["location"], location):
         return False
+    # pcre2 fields are modelled by re directly; osregex fields are limited to
+    # plain literals (test_xml_regexes_are_in_the_safe_subset), where re agrees
     for name, regex, negate in rule["fields"]:
         value = _value(event, name)
         if value is None:
@@ -174,7 +201,7 @@ def test_every_rule_in_group_eslabon_v2_and_parent_shape():
     parent = model["100300"]
     assert parent["level"] == 0 and parent["parent"] is None
     assert parent["decoded_as"] == "json"
-    assert parent["location"] == r"events\.jsonl$"
+    assert parent["location"] == "events.jsonl$"  # OS_Match: literal suffix
     assert parent["fields"] == [("event.module", "^eslabon$", False)]
     for rid, rule in model.items():
         if rid != "100300":
@@ -183,12 +210,57 @@ def test_every_rule_in_group_eslabon_v2_and_parent_shape():
 
 
 def test_xml_regexes_are_in_the_safe_subset():
-    # the tree model uses Python re; that is exact only for this subset
+    # the tree model uses Python re for <field>; that is exact only for these
     for rid, rule in _model().items():
-        for name, regex, _ in rule["fields"]:
-            assert _SAFE_REGEX.fullmatch(regex), (rid, name, regex)
-        if rule["location"] is not None:
-            assert _SAFE_LOCATION.fullmatch(rule["location"]), rid
+        for (name, regex, _), ftype in zip(rule["fields"], rule["ftypes"], strict=True):
+            if ftype == "pcre2":
+                assert _SAFE_PCRE2.fullmatch(regex), (rid, name, regex)
+            else:
+                assert ftype == "osregex", (rid, name, ftype)
+                assert _SAFE_OSREGEX.fullmatch(regex), (rid, name, regex)
+
+
+def test_every_field_is_pcre2():
+    # one regex dialect for every <field>: "\." means a literal dot, as in re
+    for rid, rule in _model().items():
+        assert rule["ftypes"] and set(rule["ftypes"]) == {"pcre2"}, rid
+
+
+def test_no_location_has_a_backslash():
+    # <location> is OS_Match: no escapes, a backslash is matched literally
+    for rid, rule in _model().items():
+        assert "\\" not in (rule["location"] or ""), rid
+
+
+def test_osmatch_model():
+    assert _osmatch("events.jsonl$", "/var/log/eslabon/EVENTS.jsonl")
+    assert not _osmatch("events.jsonl$", "/var/log/eslabon/eventos.jsonl")
+    assert not _osmatch("events\\.jsonl$", "/var/log/eslabon/events.jsonl")
+    assert _osmatch("events\\.jsonl$", "/x/events\\.jsonl")
+    assert _osmatch("^/var|^/opt", "/opt/x") and not _osmatch("^/var", "x/var")
+    assert _osmatch("^stdin$", "stdin") and not _osmatch("^stdin$", "stdin2")
+    assert _osmatch("eslabon", "/var/log/eslabon/x")
+
+
+def test_rule_tree_local_and_agent_locations(samples):
+    finding = samples["esl-006.jsonl"][0]
+    for location in (
+        "/var/log/eslabon/events.jsonl",
+        "(kali) any->/var/log/eslabon/events.jsonl",
+        "(kali) 10.10.10.5->/var/log/eslabon/events.jsonl",
+    ):
+        assert _matching_leaves(finding, location=location) == ["100306"], location
+
+
+def test_dataset_dot_is_literal(samples):
+    finding = samples["esl-006.jsonl"][0]
+    for dataset in ("eslabonXfinding", "eslabon.findings", "xeslabon.finding"):
+        odd = json.loads(json.dumps(finding))
+        odd["event"]["dataset"] = dataset
+        assert _matching_leaves(odd) == [], dataset
+    scan = json.loads(json.dumps(samples["scan-ok.jsonl"][0]))
+    scan["event"]["dataset"] = "eslabonXscan"
+    assert _matching_leaves(scan) == []
 
 
 def test_scan_rules_shape():
@@ -225,7 +297,12 @@ def test_rule_tree_one_alert_per_event(samples):
 def test_rule_tree_ignores_other_sources(samples):
     finding = samples["esl-006.jsonl"][0]
     # eslabon v1's file, stdin (wazuh-logtest default), another decoder
-    for location in ("/var/log/eslabon/eventos.jsonl", "stdin"):
+    for location in (
+        "/var/log/eslabon/eventos.jsonl",
+        "(kali) any->/var/log/eslabon/eventos.jsonl",
+        "/var/log/eslabon/events.jsonl.1",
+        "stdin",
+    ):
         assert _matching_leaves(finding, location=location) == []
     assert _matching_leaves(finding, decoder="syslog") == []
     other_module = json.loads(json.dumps(finding))
@@ -322,7 +399,7 @@ def test_sigma_targets_esl006_and_maps_to_100306():
     )
     assert top["status"] == "experimental"
     assert top["level"] == "high"
-    assert re.fullmatch(r"\d{4}/\d{2}/\d{2}", top["date"])
+    assert re.fullmatch(r"\d{4}-\d{2}-\d{2}", top["date"])  # ISO 8601
     assert "ESL-006" in top["title"]
     tags = [x.strip() for x in _sigma_block("tags")]
     assert tags == ["- attack.initial_access", "- attack.t1195.001"]
@@ -339,9 +416,12 @@ def test_sigma_targets_esl006_and_maps_to_100306():
     mapping = MAPPING.read_text("ascii")
     assert "100306" in mapping and "100320" not in RULES_XML.read_text("ascii")
     for sigma_field, wazuh in (
-        ("event.module", '<field name="event.module">^eslabon$</field>'),
-        ("event.dataset", r'<field name="event.dataset">^eslabon\.finding$</field>'),
-        ("rule.id", '<field name="rule.id">^ESL-006$</field>'),
+        ("event.module", '<field name="event.module" type="pcre2">^eslabon$</field>'),
+        (
+            "event.dataset",
+            r'<field name="event.dataset" type="pcre2">^eslabon\.finding$</field>',
+        ),
+        ("rule.id", '<field name="rule.id" type="pcre2">^ESL-006$</field>'),
     ):
         assert sigma_field in mapping and wazuh in mapping, sigma_field
 
@@ -364,3 +444,9 @@ def test_integration_files_are_ascii():
     for path in (*WAZUH.rglob("*"), *SIGMA.rglob("*")):
         if path.is_file():
             assert path.read_bytes().isascii(), path
+
+
+def test_gitattributes_pin_lf_for_integration_text():
+    lines = (ROOT / ".gitattributes").read_text("ascii").splitlines()
+    for pattern in ("*.snippet", "*.yml", "*.sh", "*.xml"):
+        assert f"{pattern} text eol=lf" in lines, pattern

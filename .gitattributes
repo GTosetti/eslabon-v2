@@ -2,3 +2,6 @@
 *.jsonl text eol=lf
 *.yar text eol=lf
 *.xml text eol=lf
+*.snippet text eol=lf
+*.yml text eol=lf
+*.sh text eol=lf

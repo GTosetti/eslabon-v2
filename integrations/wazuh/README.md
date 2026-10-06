@@ -19,7 +19,7 @@ Wazuh emits **one alert per event**, so each event reaches exactly one leaf:
 
 | ID | Level | Matches | Alert |
 |---|---|---|---|
-| `100300` | 0 | `json` decoder, location `events\.jsonl$`, `event.module` = `eslabon` | parent, no alert |
+| `100300` | 0 | `json` decoder, location `events.jsonl$`, `event.module` = `eslabon` | parent, no alert |
 | `100301` | 11 | finding, `rule.id` = `ESL-001` (pypi-install-exec) | T1546.016, T1059.006 |
 | `100302` | 11 | finding, `ESL-002` (npm-install-script-exec) | T1546.016, T1059.007 |
 | `100303` | 12 | finding, `ESL-003` (encoded-exec) | T1027.013, T1140 |
@@ -35,6 +35,15 @@ Levels and `<mitre>` IDs come from `src/eslabon/catalog.toml` (`wazuh_level`,
 **`rule.id` and `rule.name` in the XML are our JSON fields.** In the alert they are
 stored under `data.rule.*`, next to Wazuh's own `rule.id` (`1003xx`). This is the
 first thing to confirm in E7.
+
+**Matching semantics.** `<location>` is OS_Match: a literal, case-insensitive
+compare where only a leading `^` and a trailing `$` are special and a backslash is
+**not** an escape (so `events\.jsonl$` would never match). `events.jsonl$` is a
+suffix compare that covers both the local form `/var/log/eslabon/events.jsonl` and
+the form an agent event carries, `(<agent>) <ip>->/var/log/eslabon/events.jsonl`
+(e.g. `(kali) any->/var/log/eslabon/events.jsonl`), and never matches v1's
+`eventos.jsonl`. Every `<field>` is `type="pcre2"`: in the default OS_Regex, `\.`
+means *any* character, so `^eslabon\.finding$` would also match `eslabonXfinding`.
 
 ## Install (manager)
 
@@ -61,8 +70,8 @@ sudo systemctl restart wazuh-agent
 
 ## Test with wazuh-logtest
 
-Generate the samples on the development host, from the repository root (they run the real scanner over
-synthetic archives; the output dir must be outside the repository, because the
+Generate the samples on the development host, from the repository root (they run
+the real scanner over synthetic archives; the output dir must be outside the repository, because the
 evidence snippets would trip our own repo guard):
 
 ```bash
@@ -75,13 +84,19 @@ evidence snippets would trip our own repo guard):
 | `scan-ok.jsonl` | `100310` |
 | `scan-incomplete.jsonl`, `scan-osv-unavailable.jsonl` | `100311` |
 
-On the manager, run `sudo /var/ossec/bin/wazuh-logtest` and paste one line. Phase 2
-must show `decoder: 'json'`; phase 3 must show the rule ID in the table above, its
-level, and the `mitre` block.
+**Location matters.** `100300` requires the location to end in `events.jsonl`;
+without `-l`, `wazuh-logtest` reports the location as `stdin`, which does **not**
+match, and a pasted line stops at phase 2. So, on the manager:
 
-**Location matters.** `100300` requires the location to end in `events.jsonl`.
-`wazuh-logtest` reading stdin reports the location as `stdin`, which does **not**
-match, so a pasted line can stop at phase 2. Two ways around it, to be checked in E7:
+```bash
+sudo /var/ossec/bin/wazuh-logtest -l /var/log/eslabon/events.jsonl
+```
+
+and paste one line (`-l` sets the location, per the 4.14 `wazuh-logtest`
+reference). Phase 2 must show `decoder: 'json'`; phase 3 must show the rule ID in
+the table above, its level, and the `mitre` block.
+
+Fallbacks, if `-l` does not behave as documented:
 - the API, which takes the location explicitly:
   `PUT /logtest` with `{"event": "<line>", "log_format": "json", "location": "/var/log/eslabon/events.jsonl"}`;
 - a temporary copy of the rule file with the `<location>` line removed, used only for

@@ -7,7 +7,7 @@ description: |
     identity; a renamed or re-versioned known-bad artifact is left to the
     content rules ESL-001..004.
 author: Eslabon project
-date: 2026/10/06
+date: 2026-10-06
 references:
     - https://osv.dev/
     - https://attack.mitre.org/techniques/T1195/001/

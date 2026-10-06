@@ -19,17 +19,19 @@ itself is not run by any engine.
 ## Field mapping
 
 The Wazuh `json` decoder exposes nested JSON keys as dotted field names, so each
-Sigma field keeps its name. Values are matched as strings with the default
-`osregex` type; the regexes are anchored so the match is exact (Sigma's default for
+Sigma field keeps its name. Values are matched as strings with `type="pcre2"` on
+every `<field>`: in Wazuh's default OS_Regex, `\.` means *any* character, so
+`^eslabon\.finding$` would also match `eslabonXfinding`; in PCRE2 it is a literal
+dot. The regexes are anchored so the match is exact (Sigma's default for
 a plain value is an exact, case-insensitive match; ours are all lower case or fixed
 upper-case IDs, so case does not matter here).
 
 | Sigma field | Sigma value | Wazuh rule | Wazuh element (exact text) |
 |---|---|---|---|
-| `logsource.product: eslabon` | - | `100300` | `<decoded_as>json</decoded_as>` + `<location>events\.jsonl$</location>` |
-| `event.module` | `eslabon` | `100300` | `<field name="event.module">^eslabon$</field>` |
-| `event.dataset` | `eslabon.finding` | `100306` | `<field name="event.dataset">^eslabon\.finding$</field>` |
-| `rule.id` | `ESL-006` | `100306` | `<field name="rule.id">^ESL-006$</field>` |
+| `logsource.product: eslabon` | - | `100300` | `<decoded_as>json</decoded_as>` + `<location>events.jsonl$</location>` (OS_Match: literal, case-insensitive suffix; no backslash escapes) |
+| `event.module` | `eslabon` | `100300` | `<field name="event.module" type="pcre2">^eslabon$</field>` |
+| `event.dataset` | `eslabon.finding` | `100306` | `<field name="event.dataset" type="pcre2">^eslabon\.finding$</field>` |
+| `rule.id` | `ESL-006` | `100306` | `<field name="rule.id" type="pcre2">^ESL-006$</field>` |
 
 `rule.id` is **our** decoded field. In the alert it is stored as `data.rule.id`,
 separate from Wazuh's own `rule.id` (`100306`). Confirming that in `wazuh-logtest`
