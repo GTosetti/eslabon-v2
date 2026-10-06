@@ -106,13 +106,10 @@ name is treated like a rewritten name.
 
 ## Duplicate members
 
-When two members land on the same file, only the findings of the last copy are reported
-(that is the copy an installer leaves on disk). "Same file" means the same
-`posixpath.normpath` of the raw member name (npm: first component dropped), and it only
-applies when neither name was rewritten by normalisation (traversal, absolute path) and
-neither contains a `\`. A backslash is a separator on Windows but a literal filename
-character on POSIX installers, so its landing place is uncertain. In every other case the
-findings of every copy are kept.
+All copies are scanned and reported: every copy of a duplicated name gets its own findings,
+and duplicates are flagged with the `duplicate_name` anomaly. Which copy an installer leaves
+on disk depends on the installer, the OS and how it maps names (traversal, `\`, NUL,
+directory entries), so the scanner never drops a finding on that guess.
 
 ## Versioning
 

@@ -291,7 +291,7 @@ def test_default_out_is_events_jsonl_in_cwd(dirs, tmp_path):
 # ------------------------------------------------------------- duplicates ----
 
 
-def test_duplicate_member_only_last_copy_reported(dirs, monkeypatch):
+def test_duplicate_member_every_copy_reported(dirs, monkeypatch):
     _in_process(monkeypatch)
     monkeypatch.setattr(scan, "ANALYZERS", [_one_finding])
     data = make_tar(
@@ -310,7 +310,7 @@ def test_duplicate_member_only_last_copy_reported(dirs, monkeypatch):
         if e["event"]["dataset"] == "eslabon.finding"
         and e["eslabon"]["evidence"]["file"] == "index.js"
     ]
-    assert snippets == ["LAST copy"]
+    assert snippets == ["FIRST copy", "LAST copy"]
     assert "duplicate_name" in _summary(events)["eslabon"]["scan"]["anomaly_kinds"]
 
 
@@ -629,7 +629,7 @@ def test_r27_traversal_metadata_candidate_is_ambiguous(dirs):
     assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
 
 
-def test_r25_identical_faithful_paths_still_collapse(dirs, monkeypatch):
+def test_r29_identical_paths_report_every_copy(dirs, monkeypatch):
     _in_process(monkeypatch)
     monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
     data = make_zip(
@@ -640,7 +640,35 @@ def test_r25_identical_faithful_paths_still_collapse(dirs, monkeypatch):
     )
     target = _put(dirs, "w-1.0-py3-none-any.whl", data)
     assert _run(target, dirs[1]) == 1
-    assert _finding_snippets(_events(dirs[1])) == ["EVIL last"]
+    assert _finding_snippets(_events(dirs[1])) == ["EVIL first", "EVIL last"]
+
+
+def test_r29_evil_then_benign_same_name_keeps_finding(dirs, monkeypatch):
+    _in_process(monkeypatch)
+    monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
+    data = make_zip([ZipItem("w/a.py", b"EVIL first"), ZipItem("w/a.py", b"benign")])
+    target = _put(dirs, "w-1.0-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 1
+    events = _events(dirs[1])
+    assert _finding_snippets(events) == ["EVIL first"]
+    assert "duplicate_name" in _summary(events)["eslabon"]["scan"]["anomaly_kinds"]
+
+
+def test_r29_dir_with_data_after_evil_file_keeps_finding(dirs, monkeypatch):
+    # probe5: "w/a.py/" with data shares the normalised path of the EVIL w/a.py,
+    # but pip installs w/a.py = EVIL. Every copy is reported.
+    _in_process(monkeypatch)
+    monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
+    data = make_zip([ZipItem("w/a.py", b"EVIL payload"), ZipItem("w/a.pyZ", b"benign")])
+    data = zip_rename(data, "w/a.pyZ", b"w/a.py/")
+    assert _orig_names(data) == ["w/a.py", "w/a.py/"]
+    target = _put(dirs, "w-1.0-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 1
+    events = _events(dirs[1])
+    assert _finding_snippets(events) == ["EVIL payload"]
+    sc = _summary(events)["eslabon"]["scan"]
+    assert sc["status"] == "ok"
+    assert "dir_with_content" in sc["anomaly_kinds"]
 
 
 def _wheel_meta(name: str) -> bytes:

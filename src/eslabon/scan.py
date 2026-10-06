@@ -121,28 +121,13 @@ def parse_metadata(m: Member, ecosystem: str) -> tuple[str, str] | None:
     return _parse_rfc822(m.data)
 
 
-def faithful_key(raw: str, ecosystem: str) -> str:
-    """Where an installer really writes ``raw``: ``posixpath.normpath(raw)``.
-
-    npm drops the first component (node-tar strip:1). Only meaningful for names
-    that ``_rewritten`` rejects; a backslash is never treated as a separator,
-    because on POSIX installers it is a literal filename character.
-    """
-    p = posixpath.normpath(raw)
-    if ecosystem == "npm":
-        parts = p.split("/")
-        if len(parts) > 1:
-            p = "/".join(parts[1:])
-    return p
-
-
 def _rewritten(raw: str, ecosystem: str) -> bool:
     """True if the landing place of ``raw`` is uncertain.
 
     That is: normalisation had to rewrite it (traversal, absolute, drive), or it
     contains a backslash (a separator on Windows, a literal character on POSIX)
     or a NUL (some tools cut the name there).
-    Such members never take part in last-copy-wins and are never metadata.
+    Such members are never metadata candidates.
     """
     if chr(0x5C) in raw or chr(0) in raw:  # NUL: truncated by some readers
         return True
@@ -214,28 +199,21 @@ class _MetadataPicker:
 def analyze_archive(path: Path, pkg: PackageRef, limits: Limits) -> ScanResult:
     """Read every member once, run ANALYZERS and collect metadata.
 
-    Duplicates follow last-copy-wins (the copy an installer leaves on disk), but
-    only when it is certain they land on the same file: same ``faithful_key``
-    and neither name rewritten by normalisation. Otherwise every finding stays.
+    Every copy of a duplicated name is scanned and all its findings are kept;
+    which copy an installer leaves on disk cannot be emulated reliably across
+    installers and OSes. Duplicates are flagged by the ``duplicate_name`` anomaly.
     """
     eco = pkg.ecosystem
     ctx = ScanContext(rules=_get_rules(), limits=limits, pkg=pkg)
     anomalies: list[Anomaly] = []
     findings: list[Finding] = []
     stats = TarStats()
-    index_key: dict[int, str] = {}  # only members whose landing place is certain
-    last_index: dict[str, int] = {}
     picker = _MetadataPicker(eco)
     status, error = "ok", None
     try:
         for m in iter_members(path, eco, limits, anomalies, stats=stats):
             raw = m.raw_path or m.path
-            rewritten = _rewritten(raw, eco)
-            if not rewritten:
-                key = faithful_key(raw, eco)
-                index_key[m.index] = key
-                last_index[key] = m.index
-            picker.see(m, raw, rewritten, stats.kind)
+            picker.see(m, raw, _rewritten(raw, eco), stats.kind)
             for analyze in ANALYZERS:
                 findings.extend(analyze(m, ctx))
     except LimitsExceeded as exc:
@@ -243,11 +221,6 @@ def analyze_archive(path: Path, pkg: PackageRef, limits: Limits) -> ScanResult:
     except ParseError as exc:
         status, error = "parse_error", str(exc)
 
-    def superseded(f: Finding) -> bool:
-        key = index_key.get(f.member_index)
-        return key is not None and last_index[key] != f.member_index
-
-    findings = [f for f in findings if not superseded(f)]
     if any(a.kind in INCOMPLETE_KINDS for a in anomalies):
         status = worst_status(status, "incomplete")
     meta = picker.result()
