@@ -1,0 +1,96 @@
+{
+  "vulns": [
+    {
+      "modified": "2025-06-10T18:16:45Z",
+      "published": "2024-05-20T20:15:00Z",
+      "schema_version": "1.7.3",
+      "id": "GHSA-9wx4-h78v-vm56",
+      "aliases": [
+        "CVE-2024-35195"
+      ],
+      "summary": "Requests `Session` object does not verify requests after making first request with verify=False",
+      "details": "When making requests through a Requests `Session`, if the first request is made with `verify=False` to disable cert verification, all subsequent requests to the same origin will continue to ignore cert verification regardless of changes to the value of `verify`.",
+      "affected": [
+        {
+          "package": {
+            "ecosystem": "PyPI",
+            "name": "requests",
+            "purl": "pkg:pypi/requests"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {"introduced": "0"},
+                {"fixed": "2.32.0"}
+              ]
+            }
+          ]
+        }
+      ],
+      "database_specific": {
+        "github_reviewed": true,
+        "severity": "MODERATE",
+        "cwe_ids": ["CWE-670"]
+      }
+    },
+    {
+      "modified": "2025-06-12T09:01:00Z",
+      "published": "2025-06-09T19:06:08Z",
+      "schema_version": "1.7.3",
+      "id": "GHSA-9hjg-9r4m-mvj7",
+      "aliases": [
+        "CVE-2024-47081"
+      ],
+      "summary": "Requests vulnerable to .netrc credentials leak via malicious URLs",
+      "details": "Due to a URL parsing issue, Requests releases prior to 2.32.4 may leak .netrc credentials to third parties for specific maliciously-crafted URLs.",
+      "affected": [
+        {
+          "package": {
+            "ecosystem": "PyPI",
+            "name": "requests",
+            "purl": "pkg:pypi/requests"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {"introduced": "0"},
+                {"fixed": "2.32.4"}
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "modified": "2024-06-10T00:00:00Z",
+      "published": "2024-05-20T20:15:00Z",
+      "schema_version": "1.7.3",
+      "id": "PYSEC-2024-60",
+      "aliases": [
+        "CVE-2024-35195",
+        "GHSA-9wx4-h78v-vm56"
+      ],
+      "details": "Requests is a HTTP library. Prior to 2.32.0, when making requests through a Requests `Session`...",
+      "affected": [
+        {
+          "package": {
+            "ecosystem": "PyPI",
+            "name": "requests",
+            "purl": "pkg:pypi/requests"
+          },
+          "ranges": [
+            {
+              "type": "ECOSYSTEM",
+              "events": [
+                {"introduced": "0"},
+                {"fixed": "2.32.0"}
+              ]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

@@ -17,7 +17,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
-from eslabon import typosquat
+from eslabon import osv, typosquat
 from eslabon.catalog import load_catalog
 from eslabon.emit import finding_event, summary_event, write_events
 from eslabon.model import Anomaly, Limits, PackageRef, ScanResult
@@ -48,7 +48,9 @@ def _build_parser() -> argparse.ArgumentParser:
     sc.add_argument("--ecosystem", choices=_ECOSYSTEMS)
     sc.add_argument("--out", type=Path, default=Path("events.jsonl"))
     sc.add_argument(
-        "--offline", action="store_true", help="do not query OSV (recorded only)"
+        "--offline",
+        action="store_true",
+        help="do not query OSV (osv_status is recorded as skipped)",
     )
     return parser
 
@@ -117,12 +119,15 @@ def _scan(args: argparse.Namespace) -> int:
         except Exception as exc:  # e.g. spawn/pickling failure: still summarise
             result = _failed(f"worker error: {type(exc).__name__}")
         pkg = PackageRef(result.metadata_name, result.metadata_version, ecosystem, sha)
+    names: list[str] = []
     try:
-        _identity_checks(target, ecosystem, result)
+        names = _identity_checks(target, ecosystem, result)
     except Exception as exc:  # e.g. a missing or corrupt bundled top list
         _downgrade(result, f"typosquat error: {type(exc).__name__}")
-    # --offline is accepted but changes nothing yet: OSV is never queried and
-    # osv_status stays "skipped" either way (OSV lookups arrive in a later task).
+    if args.offline:
+        result.osv_status = "skipped"
+    else:
+        _osv_checks(names, ecosystem, result)
 
     now = datetime.now(UTC)
     # Findings first, then the summary, written separately: whatever goes wrong
@@ -147,7 +152,7 @@ def _scan(args: argparse.Namespace) -> int:
 _MISMATCH = "metadata name and archive file name differ"
 
 
-def _identity_checks(target: Path, ecosystem: str, result: ScanResult) -> None:
+def _identity_checks(target: Path, ecosystem: str, result: ScanResult) -> list[str]:
     """Run the package-level identity rule (ESL-005) once, in the parent.
 
     The name comes from the archive metadata; if there is none (no_metadata,
@@ -174,6 +179,40 @@ def _identity_checks(target: Path, ecosystem: str, result: ScanResult) -> None:
         finding = typosquat.check(name, ecosystem)
         if finding is not None and finding not in result.findings:
             result.findings.append(finding)
+    return names
+
+
+def _osv_checks(names: list[str], ecosystem: str, result: ScanResult) -> None:
+    """ESL-006: ask OSV about the names ESL-005 checked (even if the worker
+    failed, so breaking the archive cannot switch the rule off).
+
+    The metadata name is queried with the metadata version; a differing
+    file-name name has no trustworthy version and is queried without one (all
+    advisories for that name). An unavailable OSV makes the status at least
+    osv_unavailable, never better than what the worker reported. With no name
+    at all nothing can be asked, and osv_status says so: "skipped".
+    """
+    if not names:
+        result.osv_status = "skipped"
+        return
+    queries = [
+        (name, result.metadata_version if name == result.metadata_name else None)
+        for name in names
+    ]
+    try:
+        osv_result = osv.check(queries, ecosystem)
+    except Exception as exc:  # osv.check fails closed itself; belt and braces
+        error = f"osv error: {type(exc).__name__}"
+        osv_result = osv.OsvResult("unavailable", [], error)
+    result.osv_status = osv_result.status
+    for finding in osv_result.findings:
+        if finding not in result.findings:
+            result.findings.append(finding)
+    if osv_result.status == "unavailable":
+        worse = worst_status(result.status, "osv_unavailable")
+        if worse != result.status or result.error is None:
+            result.error = osv_result.error
+        result.status = worse
 
 
 def _failed(error: str) -> ScanResult:

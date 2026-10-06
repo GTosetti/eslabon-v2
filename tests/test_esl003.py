@@ -31,6 +31,9 @@ from eslabon.model import (
 )
 from eslabon.sanitize import to_hex
 
+# CLI scans here get a recorded empty OSV answer (conftest.osv_clean).
+pytestmark = pytest.mark.usefixtures("osv_clean")
+
 SCHEMA = json.loads(
     (Path(__file__).parent.parent / "schema" / "event.schema.json").read_text("utf-8")
 )
@@ -305,6 +308,8 @@ _EXPECTED_HITS = {
     # downloads the two top-name JSON lists for ESL-005 with urllib: a real
     # network call, which is exactly what esl001_py_network is meant to report
     "scripts/update_top_lists.py": {"esl001_py_network"},
+    # ESL-006 itself: POSTs to api.osv.dev with urllib (a real network call)
+    "src/eslabon/osv.py": {"esl001_py_network"},
 }
 
 

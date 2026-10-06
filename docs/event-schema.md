@@ -47,7 +47,7 @@ no BOM, and always under 65,536 bytes.
 | `eslabon.ecosystem` | string | `pypi` or `npm` | no |
 | `eslabon.scan_id` | string | Identifier shared by all events of one scan | no |
 | `eslabon.identity_source` | string | Summary only, **optional**: where the package name checked by ESL-005 came from: `metadata`, `filename` (metadata missing or ambiguous, so the archive's file name was used) or `argument` (a `name==version` target). Absent when no name was available | no |
-| `eslabon.evidence.file` | string | Findings only: the **inner** file that matched. Max 512 chars | yes |
+| `eslabon.evidence.file` | string | Findings only: the **inner** file that matched (package-level rules: the checked name for ESL-005, `<osv>` for ESL-006). Max 512 chars | yes |
 | `eslabon.evidence.line` | integer | Findings only: line number of the match | no |
 | `eslabon.evidence.snippet` | string | Findings only: matched text. Max 1,024 chars | yes |
 | `eslabon.evidence.name_hex` | string | Findings only: hex of the raw member name, max 1,024 chars | yes |

@@ -20,6 +20,9 @@ import eslabon.cli as cli
 from eslabon import yara_engine
 from eslabon.model import Limits, Member, PackageRef, ScanContext
 
+# CLI scans here get a recorded empty OSV answer (conftest.osv_clean).
+pytestmark = pytest.mark.usefixtures("osv_clean")
+
 SCHEMA = json.loads(
     (Path(__file__).parent.parent / "schema" / "event.schema.json").read_text("utf-8")
 )

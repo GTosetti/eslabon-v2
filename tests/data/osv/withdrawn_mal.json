@@ -1,0 +1,23 @@
+{
+  "vulns": [
+    {
+      "modified": "2025-03-04T10:12:00Z",
+      "published": "2025-02-27T16:20:31Z",
+      "withdrawn": "2025-03-04T10:12:00Z",
+      "schema_version": "1.7.3",
+      "id": "MAL-2025-1234",
+      "summary": "Malicious code in colorizr (PyPI)",
+      "details": "\n---\n_-= Per source details. Do not edit below this line.=-_\n\n## Source: ossf-package-analysis\nFalse positive; withdrawn.\n",
+      "affected": [
+        {
+          "package": {
+            "ecosystem": "PyPI",
+            "name": "colorizr",
+            "purl": "pkg:pypi/colorizr"
+          },
+          "versions": ["0.1.0"]
+        }
+      ]
+    }
+  ]
+}

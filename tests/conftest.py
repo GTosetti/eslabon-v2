@@ -29,3 +29,36 @@ def _empty_top_lists(monkeypatch):
         "_OVERRIDE",
         {e: typosquat.TopList.from_names([], e) for e in ("pypi", "npm")},
     )
+
+
+@pytest.fixture(autouse=True)
+def _no_osv_network(monkeypatch):
+    """The real OSV opener is replaced by one that raises: no test reaches the
+    network by accident (a scan then reports osv_unavailable, exit 2). Tests that
+    want OSV answers install a recorded opener; the ``network`` test passes the
+    real one explicitly."""
+    from eslabon import osv
+
+    def _blocked(url, data, timeout):
+        raise AssertionError("network access to OSV is disabled in tests")
+
+    monkeypatch.setattr(osv, "DEFAULT_OPENER", _blocked)
+
+
+@pytest.fixture
+def osv_clean(monkeypatch):
+    """OSV answers every query with no advisories (a recorded empty ``{}``).
+
+    For end-to-end CLI tests about other rules: the OSV path still runs, offline,
+    and reports osv_status "ok". Returns the list of request URLs it served.
+    """
+    from eslabon import osv
+
+    calls: list[str] = []
+
+    def _empty(url, data, timeout):
+        calls.append(url)
+        return osv.API_URL, b"{}"
+
+    monkeypatch.setattr(osv, "DEFAULT_OPENER", _empty)
+    return calls

@@ -27,6 +27,9 @@ import eslabon.cli as cli
 import eslabon.scan as scan
 from eslabon.model import Finding, Limits, PackageRef
 
+# CLI scans here get a recorded empty OSV answer (conftest.osv_clean).
+pytestmark = pytest.mark.usefixtures("osv_clean")
+
 SCHEMA = json.loads(
     (Path(__file__).parent.parent / "schema" / "event.schema.json").read_text("utf-8")
 )
@@ -118,7 +121,7 @@ def test_scan_clean_archive_exit_0_and_summary_valid(dirs, capsys):
     assert sc["status"] == "ok"
     assert sc["files_scanned"] == 2
     assert sc["bytes_read"] > 0
-    assert sc["osv_status"] == "skipped"
+    assert sc["osv_status"] == "ok"
     import hashlib
 
     assert s["file"]["hash"]["sha256"] == hashlib.sha256(CLEAN_TGZ).hexdigest()

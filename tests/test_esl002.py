@@ -22,6 +22,9 @@ from eslabon import archive, npm_scripts, yara_engine
 from eslabon.model import Limits, LimitsExceeded, Member, PackageRef, ScanContext
 from eslabon.sanitize import to_hex
 
+# CLI scans here get a recorded empty OSV answer (conftest.osv_clean).
+pytestmark = pytest.mark.usefixtures("osv_clean")
+
 SCHEMA = json.loads(
     (Path(__file__).parent.parent / "schema" / "event.schema.json").read_text("utf-8")
 )

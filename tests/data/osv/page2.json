@@ -1,0 +1,18 @@
+{
+  "vulns": [
+    {
+      "modified": "2024-11-02T07:00:00Z",
+      "published": "2024-11-02T07:00:00Z",
+      "schema_version": "1.7.3",
+      "id": "MAL-2024-10101",
+      "summary": "Malicious code in reqests (PyPI)",
+      "details": "\n---\n_-= Per source details. Do not edit below this line.=-_\n\n## Source: ossf-package-analysis\nThe package downloads and runs a second stage.\n",
+      "affected": [
+        {
+          "package": {"ecosystem": "PyPI", "name": "reqests", "purl": "pkg:pypi/reqests"},
+          "ranges": [{"type": "SEMVER", "events": [{"introduced": "0"}]}]
+        }
+      ]
+    }
+  ]
+}
