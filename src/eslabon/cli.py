@@ -198,12 +198,33 @@ def _protected_roots() -> list[Path]:
 
 
 def _temp_dir_unsafe(tmp: Path) -> bool:
-    """True if ``tmp`` (symlinks resolved) is inside the cwd or the repo."""
+    """True if ``tmp`` is inside the cwd or the repo, or that cannot be told.
+
+    Two checks. Textual: the resolved path under a resolved root (covers case
+    and 8.3 spellings). By file identity: every existing entry of ``tmp`` and
+    its parents is compared with each root by (st_dev, st_ino), because
+    resolve() keeps ``\\\\?\\C:\\...`` and UNC (``\\\\localhost\\C$\\...``)
+    spellings whose text never matches the root's. Any OSError fails closed.
+    """
     try:
         real = tmp.resolve()
+        roots = _protected_roots()
+        if any(real == root or root in real.parents for root in roots):
+            return True
+        root_ids = {_file_id(root) for root in roots}
+        for entry in (real, *real.parents):
+            if os.path.lexists(entry) and _file_id(entry) in root_ids:
+                return True
     except OSError:
         return True
-    return any(real == root or root in real.parents for root in _protected_roots())
+    return False
+
+
+def _file_id(path: Path) -> tuple[int, int]:
+    st = os.stat(path)
+    if st.st_ino == 0:  # no file identity on this file system: cannot tell
+        raise OSError("no file id")
+    return st.st_dev, st.st_ino
 
 
 def _fetch_and_scan(

@@ -969,3 +969,102 @@ def test_temp_leftover_reported(out, monkeypatch, track, capsys):
             for f in d.iterdir():
                 f.unlink()
             d.rmdir()
+
+
+# ------------------------------------------------- fix round 2 (R49) ----
+
+BS = chr(92)
+WINDOWS = os.name == "nt"
+
+
+def _short_name(path: Path) -> str:
+    import ctypes
+
+    buf = ctypes.create_unicode_buffer(1024)
+    n = ctypes.windll.kernel32.GetShortPathNameW(str(path), buf, 1024)
+    return buf.value if n else ""
+
+
+def _spelling(kind: str, path: Path) -> str:
+    """Another spelling of the existing directory ``path`` ("" = unavailable)."""
+    text = str(path)
+    if kind == "plain":
+        return text
+    if kind == "case":
+        return text.upper() if text != text.upper() else text.lower()
+    if kind == "8.3":
+        short = _short_name(path)
+        return short if short and short != text else ""
+    drive, rest = text[0], text[2:]  # "C", "\Users\..."
+    if kind == "extended":
+        return BS + BS + "?" + BS + text
+    if kind == "unc":
+        return BS + BS + "localhost" + BS + drive + "$" + rest
+    if kind == "extended_unc":
+        return BS + BS + "?" + BS + "UNC" + BS + "localhost" + BS + drive + "$" + rest
+    raise AssertionError(kind)
+
+
+SPELLINGS = ["plain", "case", "8.3", "extended", "unc", "extended_unc"]
+
+
+@pytest.mark.skipif(not WINDOWS, reason="Windows path spellings")
+@pytest.mark.parametrize("kind", SPELLINGS)
+def test_temp_dir_inside_cwd_detected_whatever_the_spelling(
+    tmp_path, monkeypatch, kind
+):
+    monkeypatch.chdir(tmp_path)
+    inside = tmp_path / "Some Dir" / "eslabon-x"
+    inside.mkdir(parents=True)
+    spelled = _spelling(kind, inside)
+    if not spelled or not os.path.isdir(spelled):
+        pytest.skip(f"{kind} spelling not reachable here")
+    assert cli._temp_dir_unsafe(Path(spelled))
+    # and the same spelling of a directory OUTSIDE the cwd is fine
+    outside_root = Path(tempfile.mkdtemp(prefix="eslabon-test-"))
+    try:
+        if tmp_path.resolve() in outside_root.resolve().parents:
+            pytest.skip("system temp is inside the cwd")
+        other = _spelling(kind, outside_root)
+        if other and os.path.isdir(other):
+            assert not cli._temp_dir_unsafe(Path(other))
+    finally:
+        outside_root.rmdir()
+
+
+@pytest.mark.skipif(not WINDOWS, reason="Windows path spellings")
+@pytest.mark.parametrize("kind", ["extended", "unc", "extended_unc"])
+def test_temp_dir_spelled_into_working_tree_fails_closed(out, monkeypatch, track, kind):
+    inside = out.parent.parent / "tmpin"
+    inside.mkdir()
+    spelled = _spelling(kind, inside)
+    if not os.path.isdir(spelled):
+        pytest.skip(f"{kind} spelling not reachable here")
+    monkeypatch.setattr(tempfile, "tempdir", spelled)
+    reg = _pypi_registry()
+    monkeypatch.setattr(fetch, "DEFAULT_OPENER", reg)
+    assert _main("requests==2.32.3", out, "--ecosystem", "pypi", "--offline") == 2
+    sc = _summary(out)["eslabon"]["scan"]
+    assert (sc["status"], sc["error"]) == (
+        "fetch_error",
+        "temp dir inside working tree",
+    )
+    assert reg.requests == []
+    assert os.listdir(inside) == []
+
+
+def test_temp_dir_check_fails_closed_on_stat_error(tmp_path, monkeypatch):
+    elsewhere = Path(tempfile.mkdtemp(prefix="eslabon-test-"))
+    try:
+        if tmp_path.resolve() in elsewhere.resolve().parents:
+            pytest.skip("system temp is inside the cwd")
+        monkeypatch.chdir(tmp_path)
+        assert not cli._temp_dir_unsafe(elsewhere)
+
+        def broken(*a, **k):
+            raise PermissionError("denied")
+
+        monkeypatch.setattr(cli.os, "stat", broken)
+        assert cli._temp_dir_unsafe(elsewhere)
+    finally:
+        elsewhere.rmdir()
