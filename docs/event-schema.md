@@ -69,8 +69,10 @@ When several statuses apply, the first one in this list wins:
 `incomplete` means content existed that was not scanned: an anomaly of kind
 `encrypted_member`, `unsupported_compression` or `bad_member` (a member whose read failed,
 or a GNU sparse tar member) was recorded. These anomaly kinds do **not** make a scan
-incomplete: `special_member` (tar FIFO, character or block device: no content) and
-`overlapped_entry` (zip entries sharing one local header: the data was read and scanned).
+incomplete: `special_member` (tar FIFO, character or block device: no content),
+`overlapped_entry` (zip entries sharing one local header: the data was read and scanned),
+and `dir_with_content` (a zip entry that looks like a directory but carries data, or whose stored
+and host-mapped names disagree: it is read and scanned as a regular member).
 
 Exit code of `eslabon scan`: 2 for every status other than `ok` (and for any usage or IO
 error), 1 if the status is `ok` and there are findings, 0 otherwise.

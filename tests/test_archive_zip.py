@@ -387,3 +387,51 @@ def test_zip_raw_path_is_stored_name_not_host_mapped(workdir):
     path = _write(workdir, data)
     members, _ = _run(path)
     assert [(m.path, m.raw_path) for m in members] == [("a/b/c.py", raw)]
+
+
+def _orig(data: bytes) -> list[str]:
+    import io
+
+    with zipfile.ZipFile(io.BytesIO(data)) as zf:
+        return [i.orig_filename for i in zf.infolist()]
+
+
+def test_zip_nul_slash_name_with_data_is_read_not_skipped(workdir):
+    # Stored "w/x.py\0/": .filename is truncated at NUL to "w/x.py" (pip reads it
+    # through namelist() and installs w/x.py), so it must not be skipped as a dir.
+    raw = "w/x.py" + chr(0) + "/"
+    data = make_zip([ZipItem("w/x.pyZZ", b"EVIL")])
+    data = zip_rename(data, "w/x.pyZZ", raw.encode("ascii"))
+    assert _orig(data) == [raw]
+    members, anomalies = _run(_write(workdir, data))
+    assert [(m.raw_path, m.data) for m in members] == [(raw, b"EVIL")]
+    assert "dir_with_content" in _kinds(anomalies)
+
+
+def test_zip_backslash_dir_name_with_data_is_read(workdir):
+    # Stored "w\\" with content: a literal file on Linux pip, "w/" only on Windows.
+    raw = "w" + chr(0x5C)
+    data = make_zip([ZipItem("wZ", b"EVIL")])
+    data = zip_rename(data, "wZ", raw.encode("ascii"))
+    assert _orig(data) == [raw]
+    members, anomalies = _run(_write(workdir, data))
+    assert [(m.raw_path, m.data) for m in members] == [(raw, b"EVIL")]
+    assert "dir_with_content" in _kinds(anomalies)
+
+
+def test_zip_slash_dir_with_data_is_read(workdir):
+    data = make_zip([ZipItem("w/a/", b"EVIL")])
+    assert _orig(data) == ["w/a/"]
+    members, anomalies = _run(_write(workdir, data))
+    assert [m.data for m in members] == [b"EVIL"]
+    assert "dir_with_content" in _kinds(anomalies)
+
+
+def test_zip_empty_dir_entry_is_silently_skipped(workdir):
+    data = make_zip([ZipItem("w/", b""), ZipItem("w/a.py", b"x")])
+    assert _orig(data) == ["w/", "w/a.py"]
+    stats = TarStats()
+    members, anomalies = _run(_write(workdir, data), stats=stats)
+    assert [m.raw_path for m in members] == ["w/a.py"]
+    assert anomalies == []
+    assert stats.files_scanned == 1

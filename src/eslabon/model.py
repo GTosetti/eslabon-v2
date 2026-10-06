@@ -33,7 +33,9 @@ class Member:
 # Anomaly kinds: traversal, absolute_path, link_skipped, zip_symlink, duplicate_name,
 # encrypted_member, unsupported_compression, bad_member, unknown_type, weak_hash_sha1,
 # no_metadata, ambiguous_metadata, special_member (tar fifo/chr/blk: no content),
-# overlapped_entry (zip entries sharing a local header; still scanned).
+# overlapped_entry (zip entries sharing a local header; still scanned),
+# dir_with_content (zip entry that looks like a directory but carries data or whose
+# stored and host-mapped names disagree; read and scanned as a regular member).
 # Only encrypted_member, unsupported_compression and bad_member mean "content not
 # scanned" and make the scan status "incomplete".
 @dataclass(frozen=True)

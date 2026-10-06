@@ -813,3 +813,19 @@ def test_fifo_in_sdist_is_not_incomplete(dirs):
     sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
     assert sc["status"] == "ok"
     assert "special_member" in sc["anomaly_kinds"]
+
+
+def test_r28_zip_nul_slash_dir_with_content_keeps_finding(dirs, monkeypatch):
+    # "w/x.py\0/" looks like a dir as stored, but pip installs w/x.py = EVIL.
+    _in_process(monkeypatch)
+    monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
+    data = make_zip([ZipItem("w/x.pyZZ", b"EVIL payload")])
+    data = zip_rename(data, "w/x.pyZZ", b"w/x.py" + bytes([0]) + b"/")
+    assert _orig_names(data) == ["w/x.py" + chr(0) + "/"]
+    target = _put(dirs, "w-1.0-py3-none-any.whl", data)
+    assert _run(target, dirs[1]) == 1
+    events = _events(dirs[1])
+    assert _finding_snippets(events) == ["EVIL payload"]
+    sc = _summary(events)["eslabon"]["scan"]
+    assert "dir_with_content" in sc["anomaly_kinds"]
+    assert sc["files_scanned"] == 1

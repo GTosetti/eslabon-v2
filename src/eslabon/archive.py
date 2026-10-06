@@ -434,6 +434,10 @@ def _read_zip_member_body(
 
 
 _ZIP_SYMLINK = "symlink mode bit set; pip installs it as a regular file"
+_DIR_WITH_CONTENT = (
+    "directory-looking entry carries data or is ambiguous; "
+    "installers may write it as a file"
+)
 
 
 def _iter_zip(
@@ -466,8 +470,15 @@ def _iter_zip(
             # "/" in .filename (and truncates at NUL), so .filename would make the
             # verdict depend on the scanner's host OS. Hence orig_filename here.
             name = info.orig_filename
-            if name.endswith("/"):
-                continue  # directory entry (ZipInfo.is_dir, on the stored name)
+            # pip lists members by .filename and calls a name ending in "/" a dir.
+            # Skip only when the stored and the host-mapped name agree on it and
+            # there is no data; any other dir-looking entry may be written as a file.
+            stored_dir = name.endswith("/")
+            mapped_dir = info.filename.endswith("/")
+            if stored_dir and mapped_dir and info.file_size == 0:
+                continue  # plain empty directory entry
+            if stored_dir or mapped_dir or name.endswith("\\"):
+                anomalies.append(_anomaly("dir_with_content", name, _DIR_WITH_CONTENT))
             if stat.S_ISLNK(info.external_attr >> 16):
                 # pip ignores zip symlink bits and writes the entry as a regular
                 # file, so it must be scanned, not skipped (unlike tar links).
