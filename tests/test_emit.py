@@ -303,3 +303,59 @@ def test_worst_case_non_bmp_expansion(tmp_path):
     )
     for line in out.read_bytes().split(b"\n")[:-1]:
         assert len(line) < MAX_LINE_BYTES
+
+
+# Elasticsearch rejects a keyword value longer than 32,766 UTF-8 bytes
+# (max_bytes_length_exceeded); the wazuh-alerts template maps strings as keyword
+# with no ignore_above, so one such field drops the whole alert (E7 experiment D).
+ES_KEYWORD_MAX_BYTES = 32_766
+ALL_ANOMALY_KINDS = [
+    "traversal", "absolute_path", "link_skipped", "zip_symlink", "duplicate_name",
+    "encrypted_member", "unsupported_compression", "bad_member", "unknown_type",
+    "weak_hash_sha1", "no_metadata", "ambiguous_metadata", "special_member",
+    "overlapped_entry", "dir_with_content", "bad_package_json",
+    "package_json_too_deep", "identity_mismatch", "no_identity", "temp_leftover",
+]
+# Widest encodings per character: non-BMP (4 bytes), BMP above U+07FF (3 bytes),
+# and a lone surrogate (3 bytes under surrogatepass). Plain ASCII too: with
+# ensure_ascii a non-ASCII char costs 6-12 line bytes, so only ASCII can put
+# more than 32,766 bytes in one field and still fit the 65,000-byte line.
+WORST_CHARS = ["A", chr(0x1F600), chr(0xFFFD), chr(0xDC80)]
+
+
+def _strings(node):
+    if isinstance(node, dict):
+        for v in node.values():
+            yield from _strings(v)
+    elif isinstance(node, list):
+        for v in node:
+            yield from _strings(v)
+    elif isinstance(node, str):
+        yield node
+
+
+@pytest.mark.parametrize("ch", WORST_CHARS)
+def test_every_emitted_string_fits_es_keyword(ch, tmp_path):
+    huge = ch * 10**6
+    pkg = PackageRef(huge, huge, "npm", "ab" * 32)
+    f = _finding(file=huge, snippet=huge, name_hex="ab" * 10**6)
+    anomalies = [Anomaly(k, "cd" * 10**6, huge) for k in ALL_ANOMALY_KINDS]
+    events = []
+    for rule in load_catalog().values():
+        events.append(finding_event(f, rule, pkg, "s" * 64, NOW))
+    for status in STATUSES:
+        for source in ("metadata", "filename", "argument", None):
+            r = ScanResult(
+                status, [f], anomalies, files_scanned=2**31, bytes_read=2**40,
+                osv_status="unavailable", duration_ms=2**31, error=huge,
+                identity_source=source,
+            )
+            events.append(summary_event(r, pkg, "s" * 64, NOW))
+    write_events(events, tmp_path / "e.jsonl")
+    checked = 0
+    for ev in events:
+        for s in _strings(ev):
+            size = len(s.encode("utf-8", errors="surrogatepass"))
+            assert size <= ES_KEYWORD_MAX_BYTES
+            checked += 1
+    assert checked > 1000
