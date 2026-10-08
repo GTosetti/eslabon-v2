@@ -30,10 +30,12 @@ Wazuh emits **one alert per event**, so each event reaches exactly one leaf:
 | `100311` | 7 | scan summary, any other status (`negate="yes"`) | |
 
 **`100311` needs the status field to exist.** Its `negate="yes"` on
-`eslabon.scan.status` does **not** match when the field is absent (measured in E7 with
-a throwaway rule of the same shape: a summary with
-no `eslabon.scan.status` reached no rule, while the control with `incomplete` reached
-the probe rule; `docs/evidence/e7/probes.txt`). So a summary without a status would
+`eslabon.scan.status` does **not** match when the field is absent. Measured in E7 with
+a throwaway probe rule, 100395, that used the same negated field
+(`<field name="eslabon.scan.status" type="pcre2" negate="yes">^ok$</field>`) under its
+own parent conditions (`event.module` = `e7probe`, no `if_sid`): a line with no
+`eslabon.scan.status` reached no rule, while the control with `incomplete` reached
+100395 (`docs/evidence/e7/probes.txt`, `docs/evidence/e7/scripts/e7_probe_rules.xml`). So a summary without a status would
 raise no alert at all. The rule relies on the event schema, which **requires**
 `eslabon.scan.status` in every summary (`schema/event.schema.json`); `summary_event`
 in `src/eslabon/emit.py` always writes it.

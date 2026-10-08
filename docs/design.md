@@ -136,7 +136,7 @@ near-miss test fixtures.
 |---|---|---|---|---|---|
 | ESL-001 | `pypi-install-exec` | `setup.py` contains a network primitive (`urlopen`, `urllib.request`, `requests.get/post`, `socket.socket`, `http.client`), **or** a `subprocess`/`os.system` call whose arguments carry a download tool or URL (`curl`, `wget`, `powershell`, `http`) | `exec(open('…/version.py').read())` (requests-style version loading); `subprocess` to build tools such as `pg_config`/`xslt-config` (psycopg2, lxml) | T1546.016, T1059.006 | 8 / 11 |
 | ESL-002 | `npm-install-script-exec` | A `preinstall`/`install`/`postinstall` script in `package.json` contains a download tool, a pipe to a shell, an inline evaluator (`node -e`, `powershell -enc`) or a URL | `node install.js` (esbuild, puppeteer, sharp), `node-gyp rebuild`, `husky install` | T1546.016, T1059.007 | 8 / 11 |
-| ESL-003 | `encoded-exec` | A decoder and an evaluator **adjacent** in the source: at most 50 characters between the evaluator's `(` and the decoder, on the same line except for one line break right after the `(`. Python: `exec`/`eval`/`compile` (not preceded by `.` or a word character) with `b16decode`/`b32decode`/`b64decode`/`b85decode`, `a85decode`, `decodebytes`, `a2b_base64`, `unhexlify`, `bytes.fromhex`, `zlib`/`lzma`/`bz2`/`gzip` `.decompress` or `codecs.decode`. JavaScript: `eval`/`Function` with `atob(` or `Buffer.from(` (any encoding) | Base64 used for data (images, test vectors) with no evaluator next to it; methods and longer names such as `re.compile(`, `model.eval(`, `literal_eval(` | T1027.013, T1140 | 9 / 12 |
+| ESL-003 | `encoded-exec` | A decoder and an evaluator **adjacent** in the source: the evaluator, up to 10 whitespace characters (line breaks included) before its `(`, then one optional line break (`\r?\n`) right after the `(`, then at most 50 characters that are not line breaks, then the decoder. Python: `exec`/`eval`/`compile` (not preceded by `.` or a word character) with `b16decode`/`b32decode`/`b64decode`/`b85decode`, `a85decode`, `decodebytes`, `a2b_base64`, `unhexlify`, `bytes.fromhex`, `zlib`/`lzma`/`bz2`/`gzip` `.decompress` or `codecs.decode`. JavaScript: `eval`/`Function` with `atob(` or `Buffer.from(` (any encoding) | Base64 used for data (images, test vectors) with no evaluator next to it; methods and longer names such as `re.compile(`, `model.eval(`, `literal_eval(` | T1027.013, T1140 | 9 / 12 |
 | ESL-004 | `secret-exfil` | A credential source (a path `\.ssh[/\\]id_(rsa|ed25519|ecdsa|dsa)`, `\.aws[/\\]credentials`, `.npmrc`, `.pypirc`, `.git-credentials`, `\.docker[/\\]config\.json`, `\.kube[/\\]config`, the separator being `/` or one or two backslashes; the same files as quoted path segments, `['"]\.ssh['"]\s*[,/]\s*['"]id_(rsa|...)` and `['"]\.aws['"]\s*[,/]\s*['"]credentials`, as in `path.join` or pathlib; these file patterns are case-insensitive; or the **whole** environment serialised, case-sensitive: `JSON\.stringify\(\s*(\{\s*\.\.\.\s*|Object\.entries\(\s*|Object\.assign\(\s*\{\s*\}\s*,\s*)?process\.env\s*[)},]`, `json\.dumps\(\s*(dict\(\s*)?os\.environ`, `json\.dumps\(\s*\{\s*\*\*\s*os\.environ\s*[},]`, `str\(\s*os\.environ\s*\)`; all bounded, `\s*` is `\s{0,10}`) **and** an exfiltration sink, case-insensitive (`discord(app)?\.com/api/webhooks`, `api\.telegram\.org/bot`, `hooks\.slack\.com`, `pastebin\.com`, `ngrok(-free)?\.(io|app)\b`, `oast\.(fun|pro|live|site|online|me)\b` and `interact\.sh\b`, these two not preceded by a word character or `-`, `burpcollaborator\.net`, `webhook\.site\b`, `requestbin\.(com|net|io|org|fullcontact\.com)\b`, `pipedream\.net`, or an `http(s)://` URL with an IPv4 literal that is **public**: checked in Python with `ipaddress` `is_global` under the decimal and the octal (leading zero) reading of each octet, and kept if any reading is global; loopback, RFC 1918, link-local incl. `169.254.169.254`, `0.0.0.0`, CGNAT, documentation and reserved ranges, and octets above 255, are excluded; if no sink survives, there is no finding) in the same file, on any member of either ecosystem | botocore and google-auth (credential files + IMDS `169.254.169.254`); requests/urllib3/axios (proxy variables + HTTP); `JSON.stringify(process.env.NODE_ENV)` in every webpack bundle; `dict(os.environ)`, bare `{...process.env}` / `{**os.environ}` and `Object.entries(process.env)` iteration, which copy the environment for a child process; `toast` libraries (substring `oast`) | T1552.001, T1041 | 9 / 12 |
 | ESL-005 | `typosquat` | Ruling R43 (variant D+G). The **full** name (with npm scope) is not in the bundled top-5,000 list. **Unscoped** names: normalised (PEP 503 for PyPI; lowercase for npm), at least 4 characters, and within Damerau-Levenshtein (OSA) distance 1 of an **unscoped** top-1,000 name; distance 2 counts only for names of 6+ characters whose first character matches the target and whose two edits are insertions, deletions or transpositions (no substitution). Trailing digits are not ignored (`urllib33`). **npm scoped** names: skipped when the scope owns any top-5,000 name; otherwise reported only as scope confusion when the bare name equals an unscoped top-1,000 name (`@evil/react`). A scoped target's bare name is never compared. Measured in docs/measurements.md | Any full name in the top-5,000 list (`ms`/`qs`/`ws`, `chalk`/`chai`, `numpy`/`numba`, `boto`/`boto3`, `@babel/core`); names shorter than 4; names in an owned scope (`@types/...`) | T1195.001 | 5 / 7 |
 | ESL-006 | `known-malicious` | OSV returns a non-withdrawn `MAL-*` record for this name and version | CVE/GHSA/PYSEC records, which the same API returns mixed in | T1195.001 | 10 / 13 |
@@ -179,8 +179,9 @@ Both are committed with their date and URL.
 - ESL-006 misses everything nobody has reported yet.
 
 Engine: YARA for ESL-001, ESL-003 and ESL-004, applied to file bytes. ESL-002 parses
-`package.json` with `json` and applies a YARA rule to the script strings. Typosquatting and
-OSV are plain Python.
+`package.json` with `json` and applies a YARA rule to the script strings for download
+tools, pipes to a shell, `powershell -enc` and URLs; its `node -e`/`-p` check is a Python
+token rule (ruling R38), not YARA. Typosquatting and OSV are plain Python.
 
 No Wazuh level 15 is used, deliberately. In `Proyecto-1` a level 15 that fired 60 times on
 benign activity taught the analyst to ignore level 15.
@@ -233,10 +234,12 @@ enforces it. Every emitted line is validated in tests. A change of meaning bumps
   A pax header can make a member name megabytes long.
 - For a local archive, `package.name` and `package.version` are read from inside it (sdist
   `PKG-INFO`, wheel `METADATA`, npm `package.json`). They are attacker-controlled. If they
-  are absent, the anomaly `no_metadata` is recorded and ESL-006 is skipped. ESL-005 falls
-  back to the name in the archive's file name (`eslabon.identity_source: filename`), so
-  breaking the metadata does not switch it off; if both names exist and differ, both are
-  checked and `identity_mismatch` is recorded (docs/event-schema.md).
+  are absent, the anomaly `no_metadata` is recorded and ESL-005 **and** ESL-006 fall back to
+  the name (and version) in the archive's file name (`eslabon.identity_source: filename`),
+  so breaking the metadata switches neither off; if both names exist and differ, both are
+  checked and `identity_mismatch` is recorded (docs/event-schema.md). With no name from any
+  source, the anomaly `no_identity` makes the scan `incomplete` (exit 2), and ESL-006 fails
+  closed: `osv_status` is `unavailable`, not `skipped` (only `--offline` gives `skipped`).
 - Arrays hold strings only. The Wazuh JSON decoder keeps string arrays but does not support
   arrays of objects.
 
@@ -271,8 +274,9 @@ re-versioned known-bad artifact is left to the content rules (see docs/event-sch
     base rule limited to `<location>eventos.jsonl$</location>`. This range, this group and
     this log path (`events.jsonl`) were chosen so the two never collide.
   - `100300` is the parent rule: `<decoded_as>json</decoded_as>` +
-    `<location>events.jsonl$</location>` + `<field name="event.module">^eslabon$</field>`,
-    level 0. Limiting it to its own file is the practice v1 validated in the lab.
+    `<location>events.jsonl$</location>` +
+    `<field name="event.module" type="pcre2">^eslabon$</field>`, level 0 (every `<field>` is
+    `type="pcre2"`, ruling R52). Limiting it to its own file is the practice v1 validated in the lab.
   - `100301`–`100306` are one child per ESL rule, each with its `<mitre>` IDs and the level
     from `catalog.toml`.
   - `100310` is the scan summary with status `ok`, at level 3, the lowest level that is

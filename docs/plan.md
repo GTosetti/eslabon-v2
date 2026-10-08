@@ -40,7 +40,8 @@ ruff (including the `S` rules), jsonschema (dev only), Wazuh 4.14 rules XML, Sig
 - Local archives larger than `max_download` are refused with `stat()` before they are
   opened, so the same cap applies to local and downloaded input.
 - Status precedence when several apply: `timeout` > `limits_exceeded` > `parse_error` >
-  `hash_mismatch` > `fetch_error` > `osv_unavailable` > `ok`.
+  `hash_mismatch` > `fetch_error` > `incomplete` > `osv_unavailable` > `ok` (`incomplete`
+  added by ruling R22).
 - Wazuh rule IDs `100300`–`100399`, group `eslabon_v2`, log path ending in `events.jsonl`.
   Never touch IDs `100100`–`100199`, which belong to eslabon v1.
 - ATT&CK version `19.2`. No Wazuh level 15 anywhere.
@@ -139,13 +140,15 @@ class Finding:  rule_id: str; file: str; member_index: int; line: int; snippet: 
 class PackageRef: name: str | None; version: str | None; ecosystem: str; archive_sha256: str
 # For name==version the name/version come from the user. For a local archive they are read
 # from inside it (sdist PKG-INFO, wheel *.dist-info/METADATA, npm package/package.json) and
-# are attacker-controlled; if absent: name=None, anomaly no_metadata, ESL-005/006 skipped.
+# are attacker-controlled; if absent: name=None, anomaly no_metadata. (As built, R42/R46/
+# R47: ESL-005/006 then use the name and version from the archive's file name; with no
+# name at all, anomaly no_identity -> status incomplete, and osv_status unavailable.)
 @dataclass(frozen=True)
 class ScanContext: rules: "yara.Rules"; limits: Limits; pkg: PackageRef
 # Every analyser has the signature  Callable[[Member, ScanContext], list[Finding]]
 @dataclass
 class ScanResult:
-    status: str             # ok|timeout|limits_exceeded|parse_error|hash_mismatch|fetch_error|osv_unavailable
+    status: str             # ok|timeout|limits_exceeded|parse_error|hash_mismatch|fetch_error|incomplete|osv_unavailable
     findings: list[Finding]; anomalies: list[Anomaly]
     files_scanned: int = 0; bytes_read: int = 0
     osv_status: str = "skipped"   # ok|unavailable|skipped
@@ -460,7 +463,7 @@ non-empty English text, each ≤ 300 characters. The residual gaps listed in §5
 
 - [ ] **Step 1:** Write the failing tests:
   - `test_finding_event_validates`
-  - `test_summary_event_validates_each_status` is parametrised over the 7 statuses.
+  - `test_summary_event_validates_each_status` is parametrised over the 8 statuses.
   - `test_every_line_under_64k`: a `Finding` with a 10 MiB snippet still emits a line under
     `MAX_LINE_BYTES` (65,536 when planned; 65,000 since ruling R54).
   - `test_megabyte_path_capped` (Review Focus 3): a 1 MB `file` and `name_hex`, and an
@@ -786,18 +789,21 @@ required keys, and the check that every logtest sample validates against the sch
 ### Task 17: Wazuh rules, agent snippet, Sigma and its translation
 
 **Files:**
-- Create: `integrations/wazuh/local_rules.xml`, `integrations/wazuh/agent-ossec.conf.snippet`,
-  `integrations/wazuh/logtest-samples/esl-00{1..6}.jsonl`, `scan-ok.jsonl`,
-  `scan-timeout.jsonl`, `integrations/wazuh/README.md`,
+- Create: `integrations/wazuh/eslabon_v2_rules.xml` (ruling R51; planned as
+  `local_rules.xml`), `integrations/wazuh/agent-ossec.conf.snippet`,
+  `scripts/make_logtest_samples.py` (R51: samples generated on demand, never committed;
+  planned as `integrations/wazuh/logtest-samples/*.jsonl`), `integrations/wazuh/README.md`,
   `integrations/sigma/eslabon_v2_known_malicious.yml`, `integrations/sigma/MAPPING.md`
 - Test: `tests/test_integrations.py`
 
 **Decisions:** the rules are exactly §7.
 - `100300` is the parent, at level 0: `<decoded_as>json</decoded_as>`,
-  `<location>events.jsonl$</location>` and `<field name="event.module">^eslabon$</field>`.
+  `<location>events.jsonl$</location>` and
+  `<field name="event.module" type="pcre2">^eslabon$</field>`.
 - `100301`–`100306` each use `<if_sid>100300</if_sid>` and
-  `<field name="rule.id">^ESL-00N$</field>`, with the level and `<mitre>` taken from the
-  catalog.
+  `<field name="rule.id" type="pcre2">^ESL-00N$</field>`, with the level and `<mitre>`
+  taken from the catalog. Every `<field>` is `type="pcre2"` (ruling R52: in the default
+  OS_Regex `\.` matches any character).
 - `100310` matches `event.dataset` `^eslabon\.scan$` and status `^ok$`, at level 3.
 - `100311` is the same with `negate="yes"` on the status, at level 7.
 - `100306` doubles as the hand translation of the Sigma rule (ESL-006, known-malicious). `MAPPING.md` maps each Sigma field to the Wazuh `<field>` it becomes. There is no separate `100320`: one alert per event.

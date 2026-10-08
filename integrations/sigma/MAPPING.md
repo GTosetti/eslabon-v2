@@ -26,8 +26,8 @@ dot. The regexes are anchored so the match is exact.
 
 **Case.** The two sides do not agree on case, and here it does not matter. Sigma's
 default for a plain value is an exact, **case-insensitive** match. The Wazuh side is
-**case-sensitive**: `type="pcre2"` uses PCRE2's default, and none of the regexes adds
-`(?i)`, so `^ESL-006$` would not match `esl-006`. This is harmless because the emitter
+**case-sensitive**, per the PCRE2 default (none of the regexes adds `(?i)`; not measured
+in the lab), so `^ESL-006$` would not match `esl-006`. This is harmless because the emitter
 writes these values in a fixed case: `event.module` is the constant `eslabon`,
 `event.dataset` is `eslabon.finding` or `eslabon.scan`, and `rule.id` comes from
 `catalog.toml` (`ESL-006`), never from package content. The `<location>` match of
