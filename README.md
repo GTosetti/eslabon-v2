@@ -15,11 +15,12 @@ mitigation. A chain is only as strong as its weakest link.
   rule is copied.
 - **From eslabon v1** ([github.com/GTosetti/eslabon](https://github.com/GTosetti/eslabon)).
   v1 is an orchestrator of external scanners. This version (v2, package version 0.1.0)
-  has its own six heuristics. Both can run on the same Wazuh manager: v2 uses rule IDs
-  100300-100399, group `eslabon_v2` and the log file `events.jsonl`; v1 uses 100100-100170,
-  group `eslabon` and `eventos.jsonl`. v1's rules are never edited.
+  has its own six heuristics. The two are designed to coexist on one Wazuh manager
+  (not tested together): v2 uses rule IDs 100300-100399, group `eslabon_v2` and the log
+  file `events.jsonl`; v1 uses 100100-100170, group `eslabon` and `eventos.jsonl`. v1's
+  rules are never edited.
 
-Other prior art and what Eslabon does not try to be: `docs/design.md` §2.
+Other prior art and what Eslabon does not try to be: [`docs/design.md`](docs/design.md) §2.
 
 ## Quick start
 
@@ -51,8 +52,11 @@ memory and deleted:
   `.tgz`, `.tar.bz2`, `.zip`, `.whl`, or `name==version`.
 - Events are **appended** to `--out` (default: `events.jsonl` in the current
   directory). Every scan writes one summary event (`event.dataset: eslabon.scan`) plus
-  one finding event per (rule, file).
+  one finding event per (rule, file); ESL-005 and ESL-006 judge the package, not a file,
+  so their findings are per package name checked.
 - Exit code: `0` clean, `1` findings, `2` error or incomplete scan. `2` wins over `1`.
+  A usage error (for example a missing `--ecosystem`) prints one line on stderr, exits
+  `2` and writes **no** event, not even a summary.
 
 What a clean scan writes (one line, wrapped here):
 
@@ -68,20 +72,22 @@ What a clean scan writes (one line, wrapped here):
   "identity_source":"metadata"}}
 ```
 
-Every field is documented in `docs/event-schema.md` and enforced by
-`schema/event.schema.json`. To develop: `.venv\Scripts\pip.exe install -e .[dev]`, then
+Every field is documented in [`docs/event-schema.md`](docs/event-schema.md) and
+enforced by [`schema/event.schema.json`](schema/event.schema.json). To develop: `.venv\Scripts\pip.exe install -e .[dev]`, then
 `.venv\Scripts\python.exe -m pytest` and `.venv\Scripts\python.exe -m ruff check .`.
-Test fixtures are built in memory at test time (`tests/builders.py`); no archive is
+Test fixtures are built in memory at test time ([`tests/builders.py`](tests/builders.py)); no archive is
 committed.
 
-To send the events to Wazuh: `integrations/wazuh/README.md` (rules file, agent
+To send the events to Wazuh: [`integrations/wazuh/README.md`](integrations/wazuh/README.md) (rules file, agent
 `<localfile>` snippet, `wazuh-logtest` samples).
 
 ## Rules
 
-Every rule is a **compound** signal: one indicator alone never fires. The single source
-of truth is `src/eslabon/catalog.toml`; the full conditions and the known
-false-positive traps are in `docs/design.md` §5.
+The content rules (ESL-001..004) look for combinations rather than a single suspicious
+word, but some conditions are enough on their own: a network call in `setup.py` fires
+ESL-001, and ESL-005 and ESL-006 judge the name alone. The single source of truth is
+[`src/eslabon/catalog.toml`](src/eslabon/catalog.toml); the full conditions and the
+known false-positive traps are in [`docs/design.md`](docs/design.md) §5.
 
 | ID | Name | Fires when (summary) | ATT&CK v19.2 | Severity / Wazuh rule, level | Mitigation |
 |---|---|---|---|---|---|
@@ -102,8 +108,12 @@ event itself keeps T1027.013 in `threat.technique.id`.
 
 ## Measured false positives
 
-From `docs/measurements.md`, run on **2026-10-06** with the scanner at commit
-**`52d0d8e`** (`src/` unchanged through `13899a9`). The corpus, `corpus/legit.toml`, pins
+From [`docs/measurements.md`](docs/measurements.md), run on **2026-10-06** with the
+scanner at commit **`52d0d8e`** (`src/` unchanged through `13899a9`). The rule code has
+not changed since: `git diff 13899a9..HEAD -- src/` touches only event output and catalog
+text (where the archive hash is written, the line cap, the ESL-001 mitigation wording
+and the Wazuh `<mitre>` override), not the YARA rules, the archive reader,
+typosquatting or OSV. The corpus, [`corpus/legit.toml`](corpus/legit.toml), pins
 the top 100 PyPI and the top 100 npm packages to exact versions; every package was
 downloaded from its registry and scanned with OSV queried.
 
@@ -116,12 +126,14 @@ downloaded from its registry and scanned with OSV queried.
 **0 false positives on 194 of 200 fully scanned packages.** The 6 incomplete scans
 (`numpy`, `grpcio`, `ruff`, `scipy`, `lxml`, `@esbuild/linux-x64`) hit Eslabon's own caps
 (5,000 members or 10 MiB per member) and give no verdict; they are listed by name in
-`docs/measurements.md`. No rule fired on any package, incomplete ones included.
+[`docs/measurements.md`](docs/measurements.md). No rule fired on any package, incomplete ones included.
 
 **Limits.** These are 200 very popular, well-maintained packages, where the content rules
 rarely meet a near-miss: ESL-001 was exercised on only 36 `setup.py` files and ESL-002
 on about 3 lifecycle scripts. The 0 says little about over-firing on the long tail of
-smaller packages. It is measured, not proven.
+smaller packages. It is measured, not proven. And it is a false-positive count only:
+the **detection rate on real malicious packages has not been measured yet**
+([roadmap item 1](docs/roadmap.md#1-measuring-detection-against-real-samples)).
 
 ESL-005 cannot fire on that corpus (every corpus name is in its exemption list), so it is
 measured separately, by name only, on ranks 5,001-6,000 of each top list:
@@ -131,13 +143,13 @@ measured separately, by name only, on ranks 5,001-6,000 of each top list:
 | pypi | 14/1000 (1.4%) | 442/455, 14/15 | 6/6 |
 | npm | 11/1000 (1.1%) | 90/121, 9/11 | 1/8 |
 
-The 25 known ESL-005 false positives are listed by name in `docs/measurements.md`. There
+The 25 known ESL-005 false positives are listed by name in [`docs/measurements.md`](docs/measurements.md). There
 is no allowlist: a false positive is fixed in the rule or published, never suppressed by
 name.
 
 ## Lab result: three layers
 
-Measured on 2026-10-06 (`docs/evidence/e7/README.md`). Eslabon ran on Kali 2026.2
+Measured on 2026-10-06 ([`docs/evidence/e7/README.md`](docs/evidence/e7/README.md)). Eslabon ran on Kali 2026.2
 (Python 3.13.12) with a Wazuh agent `4.14.0-1`, against a manager from the **Wazuh OVA
 4.14.0, revision rc2** (ruling R53: the lab VMs of this host, not a 4.14.7 install). Eight
 scans of synthetic archives per pass, all with `--offline` except the ESL-006 one, which
@@ -154,7 +166,9 @@ filtered by the scans' `scan_id`s:
 The 14 events: one finding for each of ESL-001..006 (rules 100301..100306, levels 11, 11,
 12, 12, 7, 13), seven `ok` summaries (100310) and one `incomplete` summary (100311).
 ESL-006 fired live: a synthetic archive declaring `paypalize` 1.0.0 got a `MAL-` advisory
-from OSV, and nothing malicious was downloaded.
+from OSV, and nothing malicious was downloaded. The archives are synthetic: the lab
+shows that each rule's alert travels end to end, not how well the rules catch real
+malware.
 
 **Why pass 1 indexed 0.** The rules engine alerted on all 14, but the indexer rejected
 every alert: the `wazuh-alerts` template maps `data.file` as a keyword, and the events then
@@ -168,21 +182,31 @@ indexed, because one string in it was over the indexer's 32,766-byte keyword lim
 Eslabon's own strings are capped far below that, and a test pins it. A UTF-8 BOM at the
 start of the file is harmless.
 
-**Sigma.** `integrations/sigma/` holds one Sigma rule (ESL-006). No official pySigma
+**Sigma.** [`integrations/sigma/`](integrations/sigma/MAPPING.md) holds one Sigma rule (ESL-006). No official pySigma
 backend for Wazuh exists, so it is translated by hand, and its translation is rule
 100306. What is validated end to end is that translation firing in `wazuh-alerts-*`; the
 Sigma file itself is not run by any engine.
 
 ## What this does not detect
 
-Stated rather than hidden (`docs/design.md` §5, `docs/measurements.md`, and the gaps the
-reviews documented). Each one is also a roadmap item (`docs/roadmap.md`).
+Stated rather than hidden ([`docs/design.md`](docs/design.md) §5,
+[`docs/measurements.md`](docs/measurements.md), and the gaps the reviews documented).
+Every gap below has its place in [`docs/roadmap.md`](docs/roadmap.md).
+
+**Not measured yet: detection of real malware.** Every rule has fired only on synthetic
+fixtures, built at test time and in the lab. How many real malicious packages Eslabon
+catches is unknown until
+[roadmap item 1](docs/roadmap.md#1-measuring-detection-against-real-samples) is done.
 
 **Per rule:**
 - **ESL-001** runs only on the top-level `setup.py` of a PyPI sdist, never on a wheel
-  (pip does not run a wheel's `setup.py`). It misses a `setup.py` that fetches or runs
-  code through a helper module, and a download command assembled indirectly (string
-  formatting, a `shutil.which` lookup) instead of written next to the call.
+  (pip does not run a wheel's `setup.py`). It does **not** look at an in-tree build
+  backend: an sdist with no `setup.py` whose `pyproject.toml` points `build-backend` at a
+  module shipped in the archive (`backend-path = ["."]`) has that module run at build
+  time just as `setup.py` would be, and a network call there gives no finding. It also
+  misses a `setup.py` that fetches or runs code through a helper module, and a download
+  command assembled indirectly (string formatting, a `shutil.which` lookup) instead of
+  written next to the call.
 - **ESL-002** does not judge the JavaScript file an install script runs
   (`"postinstall": "node index.js"`), the most common shape of npm malware: the
   legitimate version of that shape (esbuild, sharp, puppeteer) downloads binaries the same
@@ -215,16 +239,19 @@ reviews documented). Each one is also a roadmap item (`docs/roadmap.md`).
   entropy, metadata signals (package age, missing repository, version jumps),
   steganography and bundled binaries are out of v0.1.
 
-**Wazuh's ATT&CK view.** Wazuh's ATT&CK database is **v13.1** (since 4.8), so the
-dashboard shows older names, for example *Defense Evasion* for TA0005, where the events
-carry ATT&CK v19.2's *Stealth*. Where a sub-technique is missing from Wazuh's database,
-the Wazuh rule uses its parent: so far only T1027.013 → T1027 for ESL-003, found in the
-lab with `wazuh-logtest` (`docs/design.md` §7, `integrations/wazuh/README.md`).
+**Wazuh's ATT&CK view.** Wazuh's bundled ATT&CK database is older than the v19.2 the
+events carry (the design records it as v13.1; that version number was not checked in the
+lab). What the lab showed: Wazuh labels the ESL-003 alert's tactic *Defense Evasion*
+where the event says *Stealth*
+([`counts-pass2-7b981f9.txt`](docs/evidence/e7/counts-pass2-7b981f9.txt)), and it has
+no T1027.013, so the Wazuh rule uses the parent T1027 (`wazuh-logtest` warning in pass 1;
+[`integrations/wazuh/README.md`](integrations/wazuh/README.md)). That is the only
+substitution found so far.
 
 ## Security model
 
 Eslabon processes hostile input. The full threat table, with the test for each row, is
-`docs/design.md` §8.
+[`docs/design.md`](docs/design.md) §8.
 
 - **Nothing from the package is executed.** No `import`, `subprocess`, `exec` or
   `setup.py` on package content; YARA only reads bytes. ruff's `S` rules police
@@ -233,8 +260,9 @@ Eslabon processes hostile input. The full threat table, with the test for each r
   absolute and drive paths are recorded as anomalies; symlinks and hardlinks are never
   followed. The only hostile bytes written to disk are a registry download, in a temporary
   directory outside the working tree, deleted after the scan.
-- **Caps on bytes actually decompressed**: 50 MiB download, 200 MiB total, 10 MiB per file,
-  5,000 members; a zip's declared entry count and directory size are checked before
+- **Caps.** The download (or the local archive) is capped at 50 MiB as stored; inside
+  it, bytes actually decompressed are counted: 200 MiB total, 10 MiB per file, 5,000
+  members; a zip's declared entry count and directory size are checked before
   parsing. Bombs end as `limits_exceeded`.
 - **A wall-clock timeout.** Reading and analysis run in a child process; YARA has a
   per-call timeout and bounded rules. A timeout or a dead worker is never reported as
@@ -257,23 +285,32 @@ Eslabon processes hostile input. The full threat table, with the test for each r
 
 ## v0.1 checklist
 
-The six conditions of `docs/design.md` §1, each with its proof.
+The six conditions of [`docs/design.md`](docs/design.md) §1, each with its proof.
 
 - [x] `eslabon scan` analyses a PyPI and an npm package (fixtures) and emits JSON Lines
-  that validate against `schema/event.schema.json`: `tests/test_cli.py` (every emitted
-  event is validated against the schema) and `tests/test_emit.py`.
-- [x] Six heuristics, each born from a red test, and the false-positive count on the
-  pinned legitimate corpus measured and published: `tests/test_esl001.py` ..
-  `tests/test_esl004.py`, `tests/test_typosquat.py`, `tests/test_osv.py`; the red runs of
-  ESL-001..004 are recorded in the bodies of commits `ac461f5`, `fea82fe`, `5192cb8` and
-  `b5d917b`; the count is in `docs/measurements.md` (0 on 194 of 200).
+  that validate against [`schema/event.schema.json`](schema/event.schema.json):
+  [`tests/test_cli.py`](tests/test_cli.py) (every emitted event is validated against the
+  schema) and [`tests/test_emit.py`](tests/test_emit.py).
+- [x] Six heuristics with tests, and the false-positive count on the pinned legitimate
+  corpus measured and published. Tests:
+  [`test_esl001.py`](tests/test_esl001.py), [`test_esl002.py`](tests/test_esl002.py),
+  [`test_esl003.py`](tests/test_esl003.py), [`test_esl004.py`](tests/test_esl004.py),
+  [`test_typosquat.py`](tests/test_typosquat.py), [`test_osv.py`](tests/test_osv.py).
+  The tests were run red before each rule existed. For ESL-001..004 the red runs are
+  recorded in the bodies of commits `ac461f5`, `fea82fe`, `5192cb8` and `b5d917b`; for
+  ESL-005 and ESL-006 only in the development ledger, which is not part of this
+  repository. The count is in [`docs/measurements.md`](docs/measurements.md) (0 on 194
+  of 200).
 - [x] Hostile-archive tests (path traversal, links, decompression bombs, hangs) exist and
-  pass: `tests/test_archive_tar.py`, `tests/test_archive_zip.py`, `tests/test_worker.py`.
+  pass: [`tests/test_archive_tar.py`](tests/test_archive_tar.py),
+  [`tests/test_archive_zip.py`](tests/test_archive_zip.py),
+  [`tests/test_worker.py`](tests/test_worker.py).
 - [x] End to end in the lab, with the three layers counted separately:
-  `docs/evidence/e7/` (14 = 14 = 14, and 14 indexed, on `7b981f9`).
+  [`docs/evidence/e7/`](docs/evidence/e7/README.md) (14 = 14 = 14, and 14 indexed, on
+  `7b981f9`).
 - [x] An English README with *"What this does not detect"*: this file.
 - [ ] One lab writeup using the usual template: linked when published.
 
 ## Licence
 
-Apache-2.0, the same as eslabon v1. See `LICENSE`.
+Apache-2.0, the same as eslabon v1. See [`LICENSE`](LICENSE).
