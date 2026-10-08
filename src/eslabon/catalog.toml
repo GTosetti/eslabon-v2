@@ -55,7 +55,7 @@ name = "pypi-install-exec"
 severity = 8
 wazuh_level = 11
 techniques = ["T1546.016", "T1059.006"]
-action = "Prefer wheels (no setup.py runs); build sdists only after review, in an isolated build with egress blocked."
+action = "Prefer wheels (no setup.py runs); build sdists only after review, in a sandboxed build (container or VM) with egress blocked."
 residual_gap = "Does not flag setup.py that fetches or runs code via indirect means (e.g. a helper module); only direct network or download-tool use is seen."
 detect = "Process and network telemetry from pip/python during install (child curl, wget, powershell, outbound connections)."
 

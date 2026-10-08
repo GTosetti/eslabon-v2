@@ -107,7 +107,7 @@ def test_tactics_v19_2():
 
 ESL001_ACTION = (
     "Prefer wheels (no setup.py runs); build sdists only after review, "
-    "in an isolated build with egress blocked."
+    "in a sandboxed build (container or VM) with egress blocked."
 )
 
 
