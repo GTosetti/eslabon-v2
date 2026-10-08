@@ -29,6 +29,15 @@ Wazuh emits **one alert per event**, so each event reaches exactly one leaf:
 | `100310` | 3 | scan summary, `eslabon.scan.status` = `ok` | lowest indexed level, so it can be counted |
 | `100311` | 7 | scan summary, any other status (`negate="yes"`) | |
 
+**`100311` needs the status field to exist.** Its `negate="yes"` on
+`eslabon.scan.status` does **not** match when the field is absent (measured in E7 with
+a throwaway rule of the same shape: a summary with
+no `eslabon.scan.status` reached no rule, while the control with `incomplete` reached
+the probe rule; `docs/evidence/e7/probes.txt`). So a summary without a status would
+raise no alert at all. The rule relies on the event schema, which **requires**
+`eslabon.scan.status` in every summary (`schema/event.schema.json`); `summary_event`
+in `src/eslabon/emit.py` always writes it.
+
 Levels and `<mitre>` IDs come from `src/eslabon/catalog.toml` (`wazuh_level`,
 `wazuh_mitre`); `tests/test_integrations.py` fails if they drift. No rule is level 15.
 `wazuh_mitre` defaults to the rule's `techniques`; a rule overrides it only where
@@ -74,6 +83,21 @@ Trim `<localfile>` blocks in `/var/ossec/etc/ossec.conf` to the one in
 sudo mkdir -p /var/log/eslabon
 sudo systemctl restart wazuh-agent
 ```
+
+## Remove (clean-up)
+
+On the manager, delete `/var/ossec/etc/rules/eslabon_v2_rules.xml` and restart it. To
+remove the Kali agent, **stop it first**, then delete its entry:
+
+```bash
+sudo systemctl stop wazuh-agent                  # on Kali, BEFORE the removal
+sudo /var/ossec/bin/manage_agents -r <id>        # on the manager
+sudo /var/ossec/bin/agent_control -l             # only 000 should be left
+```
+
+A running agent enrols again by itself and gets the same ID back, so a removal done
+while it runs is undone. Measured in E7: `manage_agents -r
+001` had to be repeated (`authd: Agent key generated for 'kali-e7'`).
 
 ## Test with wazuh-logtest
 
@@ -136,4 +160,7 @@ Substitutions, measured in E7: **`T1027.013` -> `T1027` for rule `100303`** (log
 | Kali's `python3` version: 3.14 has no `yara-python` wheel | `python3 --version` on Kali |
 
 Also worth recording: that `negate="yes"` on `<field>` behaves as expected for
-`100311`, and that no built-in json rule claims these events before `100300`.
+`100311`, and that no built-in json rule claims these events before `100300`. Both were
+checked in E7 (`docs/evidence/e7/README.md`): negate works on a present field and does
+not match an absent one (see "Rule tree" above), and rule 1002 was never tried before
+`100300` in the `-v` trace of the ESL-003 sample.

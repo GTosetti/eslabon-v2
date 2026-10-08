@@ -32,7 +32,9 @@ ruff (including the `S` rules), jsonschema (dev only), Wazuh 4.14 rules XML, Sig
   zip central directory ≤ 5,000 × (46 + 512) bytes, worker timeout 120 s, YARA timeout 10 s
   per file. All limits live in one `Limits` dataclass.
 - Exit codes: `0` clean, `1` findings, `2` error or incomplete scan. `2` wins over `1`.
-- Output: UTF-8 without BOM, one JSON object per line, every line < 65,536 bytes, snippet
+- Output: UTF-8 without BOM, one JSON object per line, every line < 65,000 bytes (ruling
+  R54: Wazuh 4.14's logcollector delivers at most 65,278 bytes; was 65,536), every string
+  value ≤ 32,766 UTF-8 bytes (indexer keyword limit, E7 experiment D), snippet
   ≤ 1,024 characters, every emitted path ≤ 512 characters, every hex field ≤ 1,024
   characters, arrays contain strings only.
 - Local archives larger than `max_download` are refused with `stat()` before they are
@@ -57,7 +59,8 @@ ruff (including the `S` rules), jsonschema (dev only), Wazuh 4.14 rules XML, Sig
    reported promptly as `parse_error` with its exit code, never as a 120 s `timeout` and
    never as `ok`. Pinned in Task 6.
 3. **Unbounded attacker-controlled names** (a 1 MB pax `path`): every emitted path is capped
-   at 512 characters and every hex field at 1,024, so the line stays under 64 KB. Pinned in
+   at 512 characters and every hex field at 1,024, so the line stays under 65,000 bytes
+   and every string under 32,766 bytes. Pinned in
    Task 7.
 4. **Binary members** (`.so`, `.png`, `.node`) inside an archive: scanned without crashing,
    and a snippet near a match decodes with `errors="replace"`. Pinned in Task 9.
@@ -94,8 +97,11 @@ schema/event.schema.json       docs/event-schema.md
 tests/builders.py              make_tar(), make_zip(), payload helpers
 tests/test_*.py
 corpus/legit.toml  scripts/update_top_lists.py  scripts/measure_fp.py
-scripts/measure_typosquat.py  scripts/oversize_line.py
-integrations/wazuh/local_rules.xml  agent-ossec.conf.snippet  logtest-samples/*.jsonl  README.md
+scripts/measure_typosquat.py  scripts/make_logtest_samples.py
+integrations/wazuh/eslabon_v2_rules.xml  agent-ossec.conf.snippet  README.md
+  (R51: rules file renamed from local_rules.xml; logtest samples generated on demand,
+  never committed. The 70 KB experiment script is docs/evidence/e7/scripts/exp_e7.py,
+  not scripts/oversize_line.py, ruling R55)
 integrations/sigma/eslabon_v2_known_malicious.yml  integrations/sigma/MAPPING.md
 docs/measurements.md  docs/roadmap.md  docs/evidence/e7/
 ```
@@ -119,8 +125,13 @@ class Limits:
 class Member:   index: int; path: str; data: bytes   # path normalised; index = order in archive
 @dataclass(frozen=True)
 class Anomaly:  kind: str; path_hex: str; detail: str
-# Anomaly kinds: traversal, absolute_path, link_skipped, duplicate_name,
-# encrypted_member, unsupported_compression, bad_member, weak_hash_sha1, no_metadata
+# Anomaly kinds (full set as built, see src/eslabon/model.py): traversal, absolute_path,
+# link_skipped, zip_symlink (R14), duplicate_name, encrypted_member,
+# unsupported_compression, bad_member, unknown_type (R18), weak_hash_sha1, no_metadata,
+# ambiguous_metadata (R26), special_member, overlapped_entry (R24), dir_with_content
+# (R28), bad_package_json (R33), package_json_too_deep (R34), identity_mismatch (R42),
+# no_identity (R47), temp_leftover (R49). encrypted_member, unsupported_compression,
+# bad_member, package_json_too_deep and no_identity make the status "incomplete".
 @dataclass(frozen=True)
 class Finding:  rule_id: str; file: str; member_index: int; line: int; snippet: str;
                 match_count: int; name_hex: str      # member_index = -1 for package-level rules
@@ -451,9 +462,9 @@ non-empty English text, each ≤ 300 characters. The residual gaps listed in §5
   - `test_finding_event_validates`
   - `test_summary_event_validates_each_status` is parametrised over the 7 statuses.
   - `test_every_line_under_64k`: a `Finding` with a 10 MiB snippet still emits a line under
-    65,536 bytes.
+    `MAX_LINE_BYTES` (65,536 when planned; 65,000 since ruling R54).
   - `test_megabyte_path_capped` (Review Focus 3): a 1 MB `file` and `name_hex`, and an
-    `Anomaly` with a 1 MB `path_hex`, all give lines under 65,536 bytes.
+    `Anomaly` with a 1 MB `path_hex`, all give lines under `MAX_LINE_BYTES`.
   - `test_no_bom_and_lf_only`
   - `test_append_not_truncate` (Review Focus 4).
   - `test_missing_parent_dir_created`
@@ -620,7 +631,8 @@ in the §5 table row for ESL-004.
 - `.venv/Scripts/python.exe -m pytest -m network` passes.
 - `eslabon scan requests==2.32.3 --ecosystem pypi --offline --out <tmp>/e.jsonl` exits 0
   or 1 (any finding gets triaged in E5), never 2. Its `file.hash.sha256` must equal PyPI's
-  published digest. Paste the output.
+  published digest. Paste the output. (Since ruling R54 the archive hash is
+  `eslabon.archive.sha256`; E4 was verified on the old field name.)
 
 ### Task 13: ESL-005 typosquat and top lists
 
@@ -791,7 +803,9 @@ required keys, and the check that every logtest sample validates against the sch
 - `100306` doubles as the hand translation of the Sigma rule (ESL-006, known-malicious). `MAPPING.md` maps each Sigma field to the Wazuh `<field>` it becomes. There is no separate `100320`: one alert per event.
 - Descriptions use `$(package.name)` and `$(rule.name)`; whether they render is checked in
   E7.
-- Every `<rule>` has `<group>eslabon_v2,</group>`.
+- `eslabon_v2` comes only from the file's enclosing `<group name="eslabon_v2,">`; no
+  `<rule>` repeats it (ruling R54: a per-rule `<group>eslabon_v2,</group>`, as first
+  planned here, listed the group twice in the alert's `rule.groups` in E7).
 - The snippet is the single `<localfile>` from §7 with
   `<location>/var/log/eslabon/events.jsonl</location>`.
 - The logtest samples are generated by running the real emitter against the fixtures, not
@@ -881,16 +895,20 @@ the user what was run, why, and what the result showed.
     finding, not as noise.
   - The `admin` password is given by the user in chat and never written to a file.
 - [ ] **Step 9: Experiments.**
-  - Run `scripts/oversize_line.py` to append one 70 KB line to the monitored
-    `events.jsonl`.
+  - Run `docs/evidence/e7/scripts/exp_e7.py` to append one 70 KB line to the monitored
+    `events.jsonl` (ruling R55: `scripts/oversize_line.py` was never created).
   - Then rotate the monitored file: move `events.jsonl` aside and recreate it starting with
     a UTF-8 BOM followed by one valid event. A new file at an unmonitored path would show
     nothing.
   - Record what each layer shows, including the agent's `ossec.log` warning.
 - [ ] **Step 10: Clean up.**
   - Set `logall_json` back to `no` and restart the manager.
+  - Stop the agent on Kali **first**: `sudo systemctl stop wazuh-agent`. A running agent
+    re-enrols by itself and gets the same ID back, so a removal done while it runs is
+    undone (measured in E7: `manage_agents -r 001` had to be repeated).
+  - Remove the agent entry on the manager with `manage_agents -r <id>`, and confirm with
+    `agent_control -l` that only `000` is left.
   - Restore the `pre-eslabon-v2` snapshot on Kali.
-  - Remove the now-orphaned agent entry on the manager with `manage_agents -r <id>`.
   - Commit `docs/evidence/e7/` with `docs: E7 lab evidence (three-layer measurement)`.
 
 ---

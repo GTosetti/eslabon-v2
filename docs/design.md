@@ -136,8 +136,8 @@ near-miss test fixtures.
 |---|---|---|---|---|---|
 | ESL-001 | `pypi-install-exec` | `setup.py` contains a network primitive (`urlopen`, `urllib.request`, `requests.get/post`, `socket.socket`, `http.client`), **or** a `subprocess`/`os.system` call whose arguments carry a download tool or URL (`curl`, `wget`, `powershell`, `http`) | `exec(open('…/version.py').read())` (requests-style version loading); `subprocess` to build tools such as `pg_config`/`xslt-config` (psycopg2, lxml) | T1546.016, T1059.006 | 8 / 11 |
 | ESL-002 | `npm-install-script-exec` | A `preinstall`/`install`/`postinstall` script in `package.json` contains a download tool, a pipe to a shell, an inline evaluator (`node -e`, `powershell -enc`) or a URL | `node install.js` (esbuild, puppeteer, sharp), `node-gyp rebuild`, `husky install` | T1546.016, T1059.007 | 8 / 11 |
-| ESL-003 | `encoded-exec` | A decoder and an evaluator **adjacent** in the source (bounded regex, ≤ 50 chars): `exec/eval/compile` with `b64decode/decodebytes/bytes.fromhex/zlib.decompress`; `eval/Function` with `atob`/`Buffer.from(…,'base64')` | Base64 used for data (images, test vectors) with no evaluator next to it | T1027.013, T1140 | 9 / 12 |
-| ESL-004 | `secret-exfil` | A credential source (a path `\.ssh[/\\]id_(rsa|ed25519|ecdsa|dsa)`, `\.aws[/\\]credentials`, `.npmrc`, `.pypirc`, `.git-credentials`, `\.docker[/\\]config\.json`, `\.kube[/\\]config`, the separator being `/` or one or two backslashes; the same files as quoted path segments, `['"]\.ssh['"]\s*[,/]\s*['"]id_(rsa|...)` and `['"]\.aws['"]\s*[,/]\s*['"]credentials`, as in `path.join` or pathlib; or the **whole** environment serialised: `JSON\.stringify\(\s*(\{\s*\.\.\.|Object\.entries\(|Object\.assign\(\s*\{\}\s*,)?\s*process\.env\s*[)},]`, `json\.dumps\(\s*(dict\()?os\.environ`, `json\.dumps\(\s*\{\s*\*\*\s*os\.environ\s*[},]`, `str\(\s*os\.environ\s*\)`; all bounded, `\s*` is `\s{0,10}`) **and** an exfiltration sink (`discord(app)?\.com/api/webhooks`, `api\.telegram\.org/bot`, `hooks\.slack\.com`, `pastebin\.com`, `ngrok(-free)?\.(io|app)`, `oast\.(fun|pro|live|site|online|me)` and `interact\.sh`, each not preceded by a hostname character, `burpcollaborator\.net`, `webhook\.site`, `requestbin\.(com|net|io|org|fullcontact\.com)`, `pipedream\.net`, domains case-insensitive, or an `http(s)://` URL with a **public** IPv4 literal, checked in Python with `ipaddress` `is_global` under the decimal and the octal (leading zero) reading of each octet; loopback, RFC 1918, link-local incl. `169.254.169.254`, `0.0.0.0`, CGNAT and documentation ranges excluded) in the same file | botocore and google-auth (credential files + IMDS `169.254.169.254`); requests/urllib3/axios (proxy variables + HTTP); `JSON.stringify(process.env.NODE_ENV)` in every webpack bundle; `dict(os.environ)`, bare `{...process.env}` / `{**os.environ}` and `Object.entries(process.env)` iteration, which copy the environment for a child process; `toast` libraries (substring `oast`) | T1552.001, T1041 | 9 / 12 |
+| ESL-003 | `encoded-exec` | A decoder and an evaluator **adjacent** in the source: at most 50 characters between the evaluator's `(` and the decoder, on the same line except for one line break right after the `(`. Python: `exec`/`eval`/`compile` (not preceded by `.` or a word character) with `b16decode`/`b32decode`/`b64decode`/`b85decode`, `a85decode`, `decodebytes`, `a2b_base64`, `unhexlify`, `bytes.fromhex`, `zlib`/`lzma`/`bz2`/`gzip` `.decompress` or `codecs.decode`. JavaScript: `eval`/`Function` with `atob(` or `Buffer.from(` (any encoding) | Base64 used for data (images, test vectors) with no evaluator next to it; methods and longer names such as `re.compile(`, `model.eval(`, `literal_eval(` | T1027.013, T1140 | 9 / 12 |
+| ESL-004 | `secret-exfil` | A credential source (a path `\.ssh[/\\]id_(rsa|ed25519|ecdsa|dsa)`, `\.aws[/\\]credentials`, `.npmrc`, `.pypirc`, `.git-credentials`, `\.docker[/\\]config\.json`, `\.kube[/\\]config`, the separator being `/` or one or two backslashes; the same files as quoted path segments, `['"]\.ssh['"]\s*[,/]\s*['"]id_(rsa|...)` and `['"]\.aws['"]\s*[,/]\s*['"]credentials`, as in `path.join` or pathlib; these file patterns are case-insensitive; or the **whole** environment serialised, case-sensitive: `JSON\.stringify\(\s*(\{\s*\.\.\.\s*|Object\.entries\(\s*|Object\.assign\(\s*\{\s*\}\s*,\s*)?process\.env\s*[)},]`, `json\.dumps\(\s*(dict\(\s*)?os\.environ`, `json\.dumps\(\s*\{\s*\*\*\s*os\.environ\s*[},]`, `str\(\s*os\.environ\s*\)`; all bounded, `\s*` is `\s{0,10}`) **and** an exfiltration sink, case-insensitive (`discord(app)?\.com/api/webhooks`, `api\.telegram\.org/bot`, `hooks\.slack\.com`, `pastebin\.com`, `ngrok(-free)?\.(io|app)\b`, `oast\.(fun|pro|live|site|online|me)\b` and `interact\.sh\b`, these two not preceded by a word character or `-`, `burpcollaborator\.net`, `webhook\.site\b`, `requestbin\.(com|net|io|org|fullcontact\.com)\b`, `pipedream\.net`, or an `http(s)://` URL with an IPv4 literal that is **public**: checked in Python with `ipaddress` `is_global` under the decimal and the octal (leading zero) reading of each octet, and kept if any reading is global; loopback, RFC 1918, link-local incl. `169.254.169.254`, `0.0.0.0`, CGNAT, documentation and reserved ranges, and octets above 255, are excluded; if no sink survives, there is no finding) in the same file, on any member of either ecosystem | botocore and google-auth (credential files + IMDS `169.254.169.254`); requests/urllib3/axios (proxy variables + HTTP); `JSON.stringify(process.env.NODE_ENV)` in every webpack bundle; `dict(os.environ)`, bare `{...process.env}` / `{**os.environ}` and `Object.entries(process.env)` iteration, which copy the environment for a child process; `toast` libraries (substring `oast`) | T1552.001, T1041 | 9 / 12 |
 | ESL-005 | `typosquat` | Ruling R43 (variant D+G). The **full** name (with npm scope) is not in the bundled top-5,000 list. **Unscoped** names: normalised (PEP 503 for PyPI; lowercase for npm), at least 4 characters, and within Damerau-Levenshtein (OSA) distance 1 of an **unscoped** top-1,000 name; distance 2 counts only for names of 6+ characters whose first character matches the target and whose two edits are insertions, deletions or transpositions (no substitution). Trailing digits are not ignored (`urllib33`). **npm scoped** names: skipped when the scope owns any top-5,000 name; otherwise reported only as scope confusion when the bare name equals an unscoped top-1,000 name (`@evil/react`). A scoped target's bare name is never compared. Measured in docs/measurements.md | Any full name in the top-5,000 list (`ms`/`qs`/`ws`, `chalk`/`chai`, `numpy`/`numba`, `boto`/`boto3`, `@babel/core`); names shorter than 4; names in an owned scope (`@types/...`) | T1195.001 | 5 / 7 |
 | ESL-006 | `known-malicious` | OSV returns a non-withdrawn `MAL-*` record for this name and version | CVE/GHSA/PYSEC records, which the same API returns mixed in | T1195.001 | 10 / 13 |
 
@@ -203,19 +203,32 @@ enforces it. Every emitted line is validated in tests. A change of meaning bumps
            "technique":{"id":["T1027.013","T1140"],"name":["Encrypted/Encoded File","Deobfuscate/Decode Files or Information"]},
            "tactic":{"id":["TA0005"],"name":["Stealth"]}},
  "package":{"name":"reqeusts","version":"1.0.0"},
- "file":{"hash":{"sha256":"…"}},
  "eslabon":{"schema_version":"1.0","attack_version":"19.2","ecosystem":"pypi","scan_id":"…",
+   "archive":{"sha256":"…"},
    "evidence":{"file":"setup.py","line":14,"snippet":"exec(<decoded payload>)","name_hex":"…"},
    "mitigation":{"action":"…","residual_gap":"…","detect":"…"}}}
 ```
 
 - `ecs.version` holds the exact ECS release whose field reference `docs/event-schema.md` was
   written against. Recording it is part of E2's exit condition.
-- `file.*` describes the **downloaded or supplied archive**, not the inner file that
-  matched. That inner file is `eslabon.evidence.file`.
+- `eslabon.archive.sha256` is the SHA-256 of the **downloaded or supplied archive**, not of
+  the inner file that matched. That inner file is `eslabon.evidence.file`. The object is
+  omitted when the hash is unknown.
+- **No `file.*` (ruling R54, a documented deviation from ECS).** ECS would put the
+  archive hash in `file.hash.sha256`, but Wazuh 4.14's `wazuh-alerts` template maps
+  `data.file` as a keyword, so any object under `file` made the indexer reject the whole
+  alert (E7 pass 1: 14 alerts, 0 indexed). No event has a top-level `file` key and the
+  schema rejects one. `schema_version` stayed `1.0`, since nothing had been published.
 - `package.type` and `package.checksum` are **not** used. In ECS they mean the package file
   type and the hash of the installed package. The ecosystem goes in `eslabon.ecosystem` and
-  the artifact hash in `file.hash.sha256`/`sha512`.
+  the artifact hash in `eslabon.archive.sha256`.
+- Every line is under **65,000 bytes** (`MAX_LINE_BYTES`, ruling R54). Wazuh 4.14's
+  logcollector delivers at most 65,278 bytes plus the newline; in E7 a 65,300-byte line
+  was dropped silently, and of the two small lines written after it the second was lost
+  too. `write_events` raises
+  rather than write a longer line. Every string value is also at most 32,766 UTF-8
+  bytes, the indexer's keyword limit (E7 experiment D); the caps below keep it far under
+  that, and a test pins it.
 - Every emitted path is capped at 512 characters and every hex field at 1,024 characters.
   A pax header can make a member name megabytes long.
 - For a local archive, `package.name` and `package.version` are read from inside it (sdist
@@ -230,7 +243,7 @@ enforces it. Every emitted line is validated in tests. A change of meaning bumps
 **Scan summary** (`event.kind: event`, `event.dataset: eslabon.scan`): one per scan.
 - `event.outcome`: `success` or `failure`.
 - `eslabon.scan.status`: `ok`, `timeout`, `limits_exceeded`, `parse_error`,
-  `hash_mismatch`, `fetch_error` or `osv_unavailable`.
+  `hash_mismatch`, `fetch_error`, `incomplete` or `osv_unavailable`.
 - `eslabon.scan.files_scanned`, `bytes_read`, `findings`, `anomalies` and `duration_ms`.
 
 Without the summary, "zero findings" and "nothing arrived" look identical in the SIEM. With
@@ -245,9 +258,12 @@ re-versioned known-bad artifact is left to the content rules (see docs/event-sch
 ## 7. Integrations
 
 **Wazuh** (`integrations/wazuh/`):
-- `local_rules.xml`, installed on the manager as its own file,
+- `eslabon_v2_rules.xml`, installed on the manager as its own file,
   `/var/ossec/etc/rules/eslabon_v2_rules.xml`, so v1's rules are never edited. IDs
-  **100300–100399**, group **`eslabon_v2`**. Wazuh produces **one alert per event**, so the
+  **100300–100399**, group **`eslabon_v2`**, set once by the file's enclosing
+  `<group name="eslabon_v2,">` and never repeated inside a rule: a per-rule copy made
+  the alert's `rule.groups` list `eslabon_v2` twice in E7 (ruling R54). The per-rule
+  `<group>` adds only `supply_chain`, `sigma` or `scan_summary`. Wazuh produces **one alert per event**, so the
   rule tree is built so that each event reaches exactly one leaf rule. No custom decoder: the
   built-in `json` decoder handles lines that start with `{"`.
   - **Coexistence with eslabon v1.** The lab manager already runs the earlier eslabon, an
@@ -267,7 +283,9 @@ re-versioned known-bad artifact is left to the content rules (see docs/event-sch
 - `agent-ossec.conf.snippet`: a `<localfile>` for `/var/log/eslabon/events.jsonl` with
   `log_format json`. Kali's agent configuration is trimmed to this block so that Kali's own
   noise does not pollute the measurement.
-- `logtest-samples/`: one line per rule, with the expected `wazuh-logtest` phase-3 output.
+- Logtest samples: one line per rule plus scan summaries, generated on demand by
+  `scripts/make_logtest_samples.py` (the real scanner over synthetic archives) and never
+  committed; `integrations/wazuh/README.md` lists the rule each one must reach.
 - A test asserts that the levels and `<mitre>` IDs in the XML match `catalog.toml`.
 
 **Wazuh's ATT&CK database is v13.1** (since 4.8), so the dashboard shows older names, e.g.
@@ -300,7 +318,7 @@ Eslabon processes hostile input. The rules below are not negotiable.
 | Parser exceptions | Caught **per member** and recorded as anomalies, not crashes: `BadZipFile` (local-header and central-directory names differ), `RuntimeError` (encrypted member), `NotImplementedError` (e.g. Deflate64). Non-zero trailing data after a gzip stream ends the scan with `status=parse_error` | Each exception class has a fixture |
 | CPU hangs (CVE-2025-8194-style loops, slow streams, regex blow-up) | Child process with wall-clock timeout; YARA `timeout=`; rules compiled with `error_on_warning=True` and bounded `.{0,N}` | A fake analyser that sleeps gives `status=timeout` |
 | Peak memory | Each tar member is scanned as soon as it is read, then dropped (peak ≈ 10 MB). A zip must be held whole for `ZipFile`, so the zip peak is ≈ 60 MB (50 MB archive + one 10 MB member) | Covered by the bomb tests |
-| Parser differentials | Paths are normalised the way npm and pip do (`\` → `/`, `./` and `//` collapsed, npm's first component stripped). Duplicate names are an anomaly, and every copy is scanned and reported. Case-only collisions, zip local/central name comparison beyond the exception above, and tar trailing-data detection are on the roadmap | Duplicate `package/package.json` is flagged and every copy is scanned |
+| Parser differentials | Paths are normalised the way npm and pip do (`\` → `/`, `./` and `//` collapsed, npm's first component stripped). **Duplicates (ruling R29):** there is no "last copy wins". Which copy an installer leaves on disk depends on the installer and the OS, so every copy is scanned, every copy's findings are reported, and the name gets a `duplicate_name` anomaly. **Uncertain landing place:** a name that normalisation rewrote (traversal, absolute, drive) or that contains a backslash or a NUL may land in different places for different installers. Such a member is still scanned but is never a metadata candidate; if any reading of its name would be one, the identity is `ambiguous_metadata` (no metadata name; ESL-005 falls back to the archive's file name). Zip names are judged on the stored `orig_filename`, not on `filename` (on Windows `zipfile` turns `\` into `/` there). A zip entry that looks like a directory but carries data is read and scanned as a file (`dir_with_content`); it is not excluded from metadata, so next to a real `METADATA` it makes the identity ambiguous. Case-only collisions, zip local/central name comparison beyond the exception above, and tar trailing-data detection are on the roadmap | Duplicate `package/package.json` is flagged and every copy is scanned and reported; a wheel whose `METADATA` is stored as `x.dist-info\METADATA` gives `ambiguous_metadata` |
 | Redirect and host tricks | Allowlisted hosts, `https` only, re-checked on every redirect | A redirect to another host or to `http` is rejected |
 | Injection through evidence | File names and snippets are attacker-controlled. C0/C1 controls, ANSI escapes, NUL and bidi overrides (U+202A–202E, U+2066–2069) are stripped; text is decoded with `errors="replace"` before truncating; the raw name is kept in `name_hex` | A name containing `\n`, `\x1b[` and U+202E comes out clean |
 
@@ -320,7 +338,8 @@ Operational rules:
 - Every heuristic has a positive fixture and a near-miss fixture built from §5's
   "must not fire" column. Each test is seen red before it is made green.
 - Hostile-archive tests cover every row of §8.
-- Every emitted line validates against the JSON Schema and is shorter than 64 KB.
+- Every emitted line validates against the JSON Schema and is shorter than 65,000 bytes,
+  and every emitted string is at most 32,766 UTF-8 bytes.
 - Consistency: every catalog rule has an implementation; the Wazuh XML matches the catalog.
 - OSV and registry clients are tested against recorded responses. One opt-in test marked
   `@pytest.mark.network` talks to the real APIs.
@@ -355,10 +374,14 @@ Operational rules:
 
 - **Expected:** N = N = N, and any difference is explained.
 - **One deliberate experiment:** emit a 70 KB line and record what each layer does with it.
-  The emitter cannot produce such a line, because of the 64 KB test, so the line is written
-  by a separate script, `scripts/oversize_line.py`.
-  This confirms with our own data the logcollector line limit (65279 bytes) and the warning
-  it logs, which is the reason for the 1 KB snippet cap.
+  The emitter cannot produce such a line, because of the line-length test, so the line is
+  written by a separate script, `docs/evidence/e7/scripts/exp_e7.py` (ruling R55: the
+  planned `scripts/oversize_line.py` was never created; this is the script that ran).
+  Result (`docs/evidence/e7/`): 70,000- and 65,300-byte lines were dropped silently, and
+  of the two small lines written after each, the second was lost too, which is why the
+  line cap became 65,000 bytes. A 65,000-byte line was collected and alerted but not
+  indexed, because its one long string exceeded the indexer's 32,766-byte keyword limit;
+  real events stay far below both limits.
 
 ## 10. Stages
 
