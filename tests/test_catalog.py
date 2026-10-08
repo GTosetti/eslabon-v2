@@ -103,3 +103,19 @@ def test_tactics_v19_2():
     assert c["ESL-003"].tactic_names == ["Stealth"]
     assert c["ESL-004"].tactics == ["TA0006", "TA0010"]
     assert c["ESL-006"].tactics == ["TA0001"]
+
+
+ESL001_ACTION = (
+    "Prefer wheels (no setup.py runs); build sdists only after review, "
+    "in an isolated build with egress blocked."
+)
+
+
+def test_esl001_action_recommends_isolated_build():
+    assert load_catalog()["ESL-001"].action == ESL001_ACTION
+
+
+def test_no_catalog_text_recommends_disabling_build_isolation():
+    for r in load_catalog().values():
+        for text in (r.action, r.residual_gap, r.detect):
+            assert "--no-build-isolation" not in text, r.id
