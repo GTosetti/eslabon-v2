@@ -1100,3 +1100,22 @@ def test_cwd_in_subdir_of_git_repo_protects_the_whole_repo(tmp_path, monkeypatch
     monkeypatch.chdir(sub)
     assert cli._temp_dir_unsafe(other / "eslabon-x")
     assert cli._temp_dir_unsafe(sub / "eslabon-x")
+
+
+# ------------------------------------------------------------ R62 #4 ------
+
+
+@pytest.mark.parametrize("tag", ["latest", "next", "beta", "v1.0.0"])
+def test_npm_dist_tag_as_version_is_a_usage_error(out, monkeypatch, tag, capsys):
+    reg = _pypi_registry()
+    monkeypatch.setattr(fetch, "DEFAULT_OPENER", reg)
+    assert _main(f"ms=={tag}", out, "--ecosystem", "npm", "--offline") == 2
+    assert not out.exists()  # usage error: no event written
+    assert reg.requests == []
+    assert "concrete version" in capsys.readouterr().err
+
+
+def test_npm_concrete_version_and_pypi_unchanged(out):
+    cli._parse_argument("ms==2.1.3", "npm")
+    cli._parse_argument("ms==0.0.1-beta.1", "npm")
+    assert cli._parse_argument("pkg==latest", "pypi") == ("pkg", "latest", "pypi")

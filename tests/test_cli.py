@@ -379,6 +379,31 @@ def test_metadata_from_wheel_metadata(dirs):
     assert s["package"] == {"name": "whl-pkg", "version": "2.0"}
 
 
+def test_legacy_zip_sdist_reads_pkg_info(dirs):
+    # R62 #1: the kind comes from the suffix (.zip = sdist), not the container
+    pkg_info = b"Metadata-Version: 2.1\nName: pkg\nVersion: 1.0\n\n"
+    data = make_zip(
+        [ZipItem("pkg-1.0/PKG-INFO", pkg_info), ZipItem("pkg-1.0/setup.py", b"")]
+    )
+    target = _put(dirs, "pkg-1.0.zip", data)
+    _run(target, dirs[1], "--ecosystem", "pypi")
+    s = _summary(_events(dirs[1]))
+    assert s["package"] == {"name": "pkg", "version": "1.0"}
+    assert s["eslabon"]["identity_source"] == "metadata"
+    assert "no_metadata" not in s["eslabon"]["scan"]["anomaly_kinds"]
+
+
+def test_tar_named_whl_reads_dist_info_metadata(dirs):
+    meta = b"Metadata-Version: 2.1\nName: whl-pkg\nVersion: 2.0\n\n"
+    data = make_tar([TarItem("whl_pkg-2.0.dist-info/METADATA", meta)])
+    target = _put(dirs, "whl_pkg-2.0-py3-none-any.whl", data)
+    _run(target, dirs[1], "--ecosystem", "pypi")
+    s = _summary(_events(dirs[1]))
+    assert s["package"] == {"name": "whl-pkg", "version": "2.0"}
+    assert s["eslabon"]["identity_source"] == "metadata"
+    assert "no_metadata" not in s["eslabon"]["scan"]["anomaly_kinds"]
+
+
 def test_metadata_from_npm_package_json(dirs):
     target = _put(dirs, "clean.tgz", CLEAN_TGZ)
     assert _run(target, dirs[1], "--ecosystem", "npm") == 0

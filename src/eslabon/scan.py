@@ -138,8 +138,8 @@ def parse_metadata(m: Member, ecosystem: str) -> tuple[str, str] | None:
 class _MetadataPicker:
     """Choose the metadata file by archive kind; refuse to guess between several.
 
-    wheel (zip, pypi): only ``<x>.dist-info/METADATA``, with exactly one
-    ``.dist-info`` dir in the archive. sdist (tar, pypi): only
+    wheel (a .whl file, pypi): only ``<x>.dist-info/METADATA``, with exactly one
+    ``.dist-info`` dir in the archive. sdist (any other pypi archive): only
     ``<single top dir>/PKG-INFO``. npm: only a ``package.json`` whose raw path
     has exactly two components (a bare ``package.json`` is dropped by strip:1).
     A rewritten or backslash member is never a candidate; if it WOULD be one
@@ -147,9 +147,10 @@ class _MetadataPicker:
     is ambiguous, since some installer could let it win.
     """
 
-    def __init__(self, ecosystem: str) -> None:
+    def __init__(self, ecosystem: str, kind: str) -> None:
         self.ecosystem = ecosystem
-        self.mode = ""  # decided on the first member, once the container is known
+        # "wheel" / "sdist" / "npm": from the suffix, as ESL-001 reads it (R62)
+        self.mode = kind
         self.candidates: list[tuple[str, str] | None] = []
         self.dirs: set[str] = set()
         self.suspect = False
@@ -165,12 +166,7 @@ class _MetadataPicker:
             return parts[1] == "PKG-INFO"
         return parts[1] == "package.json"
 
-    def see(self, m: Member, raw: str, rewritten: bool, archive_kind: str) -> None:
-        if not self.mode:
-            if self.ecosystem == "npm":
-                self.mode = "npm"
-            else:
-                self.mode = "wheel" if archive_kind == "zip" else "sdist"
+    def see(self, m: Member, raw: str, rewritten: bool) -> None:
         if rewritten:
             if any(self._wanted(r.split("/")) for r in path_readings(raw)):
                 self.suspect = True
@@ -227,12 +223,12 @@ def analyze_archive(path: Path, pkg: PackageRef, limits: Limits) -> ScanResult:
     )
     findings: list[Finding] = []
     stats = TarStats()
-    picker = _MetadataPicker(eco)
+    picker = _MetadataPicker(eco, ctx.archive_kind)
     status, error = "ok", None
     try:
         for m in iter_members(path, eco, limits, anomalies, stats=stats):
             raw = m.stored_path
-            picker.see(m, raw, is_rewritten(raw, eco), stats.kind)
+            picker.see(m, raw, is_rewritten(raw, eco))
             for analyze in ANALYZERS:
                 findings.extend(analyze(m, ctx))
     except LimitsExceeded as exc:

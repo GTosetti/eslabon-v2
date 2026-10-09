@@ -118,6 +118,13 @@ def _parse_argument(text: str, ecosystem: str | None) -> tuple[str, str, str]:
     bare = name.rsplit("/", 1)[-1]
     if not (fetch.has_alnum(bare) and fetch.has_alnum(version)):
         raise UsageError("name and version need a letter or digit")
+    if ecosystem == "npm" and not version[0].isdigit():
+        # a dist-tag (latest, next) is not a version: OSV and the metadata
+        # check would be asked about the tag itself (R62 #4)
+        raise UsageError(
+            f"npm name==version needs a concrete version, not a dist-tag: "
+            f"{clean_text(version, 64)}"
+        )
     return name, version, ecosystem
 
 
