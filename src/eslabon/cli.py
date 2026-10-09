@@ -116,13 +116,9 @@ def _parse_argument(text: str, ecosystem: str | None) -> tuple[str, str, str]:
     if name.startswith("@") and ecosystem != "npm":
         raise UsageError("a scoped @scope/name is an npm package")
     bare = name.rsplit("/", 1)[-1]
-    if not (_has_alnum(bare) and _has_alnum(version)):
+    if not (fetch.has_alnum(bare) and fetch.has_alnum(version)):
         raise UsageError("name and version need a letter or digit")
     return name, version, ecosystem
-
-
-def _has_alnum(text: str) -> bool:
-    return any(c.isalnum() for c in text)
 
 
 def _scan_file(target: Path, ecosystem: str, limits: Limits) -> tuple[ScanResult, str]:
@@ -285,10 +281,7 @@ def _scan(args: argparse.Namespace) -> int:
         # R47: ESL-005/006 cannot run without a name -- the scan is incomplete,
         # with or without --offline
         result.anomalies.append(Anomaly("no_identity", "", _NO_IDENTITY))
-        worse = worst_status(result.status, "incomplete")
-        if worse != result.status or result.error is None:
-            result.error = _NO_IDENTITY
-        result.status = worse
+        _downgrade(result, _NO_IDENTITY, to="incomplete")
     try:
         for name, _ in idents or []:
             finding = typosquat.check(name, ecosystem)
@@ -330,7 +323,8 @@ def _same_requested(meta: str, requested: str, ecosystem: str) -> bool:
     """Same registry name (npm: case-folded, scope kept; PyPI: PEP 503)."""
     if ecosystem == "npm":
         return meta.lower() == requested.lower()
-    return typosquat.normalize(meta, "pypi") == typosquat.normalize(requested, "pypi")
+    key = typosquat.registry_key
+    return key(meta, "pypi") == key(requested, "pypi")
 
 
 def _argument_identity(
@@ -426,19 +420,17 @@ def _osv_checks(
         if finding not in result.findings:
             result.findings.append(finding)
     if osv_result.status == "unavailable":
-        worse = worst_status(result.status, "osv_unavailable")
-        if worse != result.status or result.error is None:
-            result.error = osv_result.error
-        result.status = worse
+        _downgrade(result, osv_result.error, to="osv_unavailable")
 
 
 def _failed(error: str) -> ScanResult:
     return ScanResult(status="parse_error", findings=[], anomalies=[], error=error)
 
 
-def _downgrade(result: ScanResult, error: str) -> None:
-    """Mark ``result`` as failed (parse_error unless something worse already)."""
-    worse = worst_status(result.status, "parse_error")
+def _downgrade(result: ScanResult, error: str, to: str = "parse_error") -> None:
+    """Degrade ``result`` to status ``to`` unless it is already worse; ``error``
+    is kept only if the status got worse or no error was recorded yet."""
+    worse = worst_status(result.status, to)
     if worse != result.status or result.error is None:
         result.error = error
     result.status = worse

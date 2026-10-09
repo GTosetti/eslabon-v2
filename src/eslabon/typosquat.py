@@ -54,18 +54,18 @@ def _split_scope(name: str) -> tuple[str, str] | None:
     return None
 
 
+def registry_key(name: str, ecosystem: str) -> str:
+    """Exemption key: the full name (scope kept), case-folded as the registry does."""
+    if ecosystem == "npm":
+        return name.lower()
+    return _PEP503.sub("-", name).lower()
+
+
 def normalize(name: str, ecosystem: str) -> str:
     """Comparison key: PEP 503 for PyPI; npm lowercased with ``@scope/`` stripped."""
     if ecosystem == "npm":
         scoped = _split_scope(name)
         return scoped[1] if scoped else name.lower()
-    return _PEP503.sub("-", name).lower()
-
-
-def _full_key(name: str, ecosystem: str) -> str:
-    """Exemption key: the full name (scope kept), case-folded as the registry does."""
-    if ecosystem == "npm":
-        return name.lower()
     return _PEP503.sub("-", name).lower()
 
 
@@ -141,7 +141,7 @@ class TopList:
     ) -> TopList:
         if ecosystem not in _ECOSYSTEMS:
             raise ValueError(f"unknown ecosystem: {ecosystem}")
-        exempt = frozenset(_full_key(n, ecosystem) for n in names[:exempt_top])
+        exempt = frozenset(registry_key(n, ecosystem) for n in names[:exempt_top])
         targets = tuple(
             (normalize(n, ecosystem), n)
             for n in names[:target_top]
@@ -155,13 +155,18 @@ class TopList:
         return cls(exempt=exempt, targets=targets, owned_scopes=owned)
 
 
-@cache
-def load_top_list(ecosystem: str) -> TopList:
-    """The bundled list for ``ecosystem`` (src/eslabon/data/top_<eco>.json)."""
+def bundled_top_document(ecosystem: str) -> dict:
+    """The parsed bundled file src/eslabon/data/top_<eco>.json (all its keys)."""
     if ecosystem not in _ECOSYSTEMS:
         raise ValueError(f"unknown ecosystem: {ecosystem}")
     raw = files("eslabon").joinpath("data", f"top_{ecosystem}.json").read_bytes()
-    names = json.loads(raw)["names"]
+    return json.loads(raw)
+
+
+@cache
+def load_top_list(ecosystem: str) -> TopList:
+    """The bundled list for ``ecosystem`` (src/eslabon/data/top_<eco>.json)."""
+    names = bundled_top_document(ecosystem)["names"]
     if not isinstance(names, list) or not all(isinstance(n, str) for n in names):
         raise ValueError(f"malformed top list for {ecosystem}")
     return TopList.from_names(names, ecosystem)
@@ -179,7 +184,7 @@ def check(name: str, ecosystem: str, top: TopList | None = None) -> Finding | No
         top = active_top_list(ecosystem)
     if not name or len(name) > MAX_NAME:
         return None
-    if _full_key(name, ecosystem) in top.exempt:
+    if registry_key(name, ecosystem) in top.exempt:
         return None
     scoped = _split_scope(name) if ecosystem == "npm" else None
     if scoped is not None:

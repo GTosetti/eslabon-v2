@@ -39,7 +39,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 
-from eslabon import __version__
+from eslabon import __version__, typosquat
 from eslabon.model import Anomaly, FetchError, HashMismatch, Limits, LimitsExceeded
 
 ALLOWED_HOSTS = frozenset({"pypi.org", "files.pythonhosted.org", "registry.npmjs.org"})
@@ -52,7 +52,6 @@ _CHUNK = 64 * 2**10
 PYPI_API = "https://pypi.org/pypi"
 NPM_API = "https://registry.npmjs.org"
 
-_PEP503 = re.compile(r"[-_.]+")
 _PYPI_NAME = re.compile(r"[A-Za-z0-9._-]+")
 _NPM_NAME = re.compile(r"(@[a-z0-9._-]+/)?[A-Za-z0-9._-]+")
 _VERSION = re.compile(r"[A-Za-z0-9.+!_-]+")
@@ -184,7 +183,7 @@ def _chunks(resp, cap: int, deadline: float, too_big: Callable[[], Exception]):
         yield chunk
 
 
-def _get_json(url: str, opener: Opener | None, deadline: float) -> dict:
+def get_json(url: str, opener: Opener | None, deadline: float) -> dict:
     with _open(url, "application/json", opener, deadline) as resp:
         too_big = lambda: FetchError("fetch: registry response too large")  # noqa: E731
         raw = b"".join(_chunks(resp, MAX_JSON, deadline, too_big))
@@ -200,7 +199,7 @@ def _get_json(url: str, opener: Opener | None, deadline: float) -> dict:
 # ------------------------------------------------------------ resolve ----
 
 
-def _has_alnum(text: str) -> bool:
+def has_alnum(text: str) -> bool:
     return any(c.isalnum() for c in text)
 
 
@@ -211,7 +210,7 @@ def _check_spec(name: str, version: str, ecosystem: str) -> None:
     bare = name.rsplit("/", 1)[-1]
     if not (pattern.fullmatch(name) and _VERSION.fullmatch(version)):
         raise FetchError("fetch: bad package name or version")
-    if not (_has_alnum(bare) and _has_alnum(version)):
+    if not (has_alnum(bare) and has_alnum(version)):
         raise FetchError("fetch: bad package name or version")
 
 
@@ -268,7 +267,7 @@ def pick_pypi_file(entries: list[dict]) -> dict | None:
 
 
 def pypi_url(name: str, version: str) -> str:
-    norm = _PEP503.sub("-", name).lower()
+    norm = typosquat.registry_key(name, "pypi")
     return f"{PYPI_API}/{quote(norm, safe='')}/{quote(version, safe='')}/json"
 
 
@@ -282,7 +281,7 @@ def npm_url(name: str, version: str) -> str:
 
 
 def _resolve_pypi(name: str, version: str, opener, deadline) -> Artifact:
-    doc = _get_json(pypi_url(name, version), opener, deadline)
+    doc = get_json(pypi_url(name, version), opener, deadline)
     urls = doc.get("urls")
     if not isinstance(urls, list):
         raise FetchError("fetch: registry urls is not a list")
@@ -321,7 +320,7 @@ def parse_integrity(integrity: str) -> str | None:
 
 
 def _resolve_npm(name: str, version: str, opener, deadline) -> Artifact:
-    doc = _get_json(npm_url(name, version), opener, deadline)
+    doc = get_json(npm_url(name, version), opener, deadline)
     dist = doc.get("dist")
     if not isinstance(dist, dict) or not isinstance(dist.get("tarball"), str):
         raise FetchError("fetch: registry dist.tarball missing")

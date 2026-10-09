@@ -32,13 +32,6 @@ HISTORICAL = {
 }
 
 
-def _bundled_names(ecosystem: str) -> list[str]:
-    from importlib.resources import files
-
-    raw = files("eslabon").joinpath("data", f"top_{ecosystem}.json").read_bytes()
-    return json.loads(raw)["names"]
-
-
 def measure(positive_files: list[Path], list_fp: bool) -> list[str]:
     positives = [json.loads(p.read_text("utf-8")) for p in positive_files]
     header = ["ecosystem", "FP ranks 5001-6000"]
@@ -47,7 +40,7 @@ def measure(positive_files: list[Path], list_fp: bool) -> list[str]:
     details: list[str] = []
     for eco in ECOSYSTEMS:
         top = typosquat.load_top_list(eco)
-        sample = _bundled_names(eco)[5000:6000]
+        sample = typosquat.bundled_top_document(eco)["names"][5000:6000]
         fps = [f.snippet for n in sample if (f := typosquat.check(n, eco, top))]
         cells = [eco, f"{len(fps)}/{len(sample)}"]
         for pos in positives:

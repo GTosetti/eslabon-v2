@@ -104,7 +104,7 @@ def _script_rules() -> yara.Rules:
 
 
 def _is_top_package_json(m: Member) -> bool:
-    readings = path_readings(m.raw_path or m.path)
+    readings = path_readings(m.stored_path)
     return any(_TOP_PACKAGE_JSON.fullmatch(r) for r in readings)
 
 
@@ -180,10 +180,10 @@ def scan_package_json(m: Member, ctx: ScanContext) -> list[Finding]:
     match; an unreadable one records its ``load_package_json`` anomaly."""
     if ctx.archive_kind != "npm" or not _is_top_package_json(m):
         return []
-    raw = m.raw_path or m.path
+    raw = m.stored_path
     doc, problem = load_package_json(m.data)
     if doc is None:
-        ctx.anomalies.append(package_json_anomaly(problem or BAD_PACKAGE_JSON, raw))
+        ctx.anomalies.append(package_json_anomaly(problem, raw))
         return []
     scripts = doc.get("scripts")
     if not isinstance(scripts, dict):

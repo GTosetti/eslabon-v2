@@ -24,30 +24,24 @@ import hashlib
 import json
 import sys
 from datetime import UTC, datetime
-from importlib.resources import files
 from pathlib import Path
 from urllib.parse import quote
 
-from eslabon import fetch
+from eslabon import fetch, typosquat
 from eslabon.model import FetchError
 
 ECOSYSTEMS = ("pypi", "npm")
 ROOT = Path(__file__).resolve().parent.parent
 
 
-def bundled_list(ecosystem: str) -> dict:
-    raw = files("eslabon").joinpath("data", f"top_{ecosystem}.json").read_bytes()
-    return json.loads(raw)
-
-
 def latest_version(name: str, ecosystem: str) -> str:
     deadline = fetch.new_deadline()
     if ecosystem == "npm":
-        doc = fetch._get_json(fetch.npm_url(name, "latest"), None, deadline)
+        doc = fetch.get_json(fetch.npm_url(name, "latest"), None, deadline)
         version = doc.get("version")
     else:
         url = f"{fetch.PYPI_API}/{quote(name, safe='')}/json"
-        doc = fetch._get_json(url, None, deadline)
+        doc = fetch.get_json(url, None, deadline)
         info = doc.get("info")
         version = info.get("version") if isinstance(info, dict) else None
     if not isinstance(version, str) or not version:
@@ -65,7 +59,7 @@ def build(count: int) -> tuple[str, list[str]]:
     skipped: list[str] = []
     sources: list[str] = []
     for eco in ECOSYSTEMS:
-        top = bundled_list(eco)
+        top = typosquat.bundled_top_document(eco)
         sources.append(f"# {eco}: {top['source']} (retrieved {top['retrieved']})")
         for name in top["names"][:count]:
             try:

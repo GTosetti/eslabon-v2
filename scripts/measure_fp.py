@@ -80,7 +80,11 @@ def _parse_events(path: Path) -> tuple[dict | None, list[dict], int]:
 
 
 def expected_exit(status: str, findings: int) -> int:
-    """The CLI's exit-code contract: 2 non-ok, 1 ok with findings, 0 ok clean."""
+    """The CLI's exit-code contract: 2 non-ok, 1 ok with findings, 0 ok clean.
+
+    Deliberately NOT imported from eslabon.cli.exit_code: this is an independent
+    oracle, so a regression in the CLI's own function is flagged, not mirrored.
+    """
     if status != "ok":
         return 2
     return 1 if findings else 0
@@ -147,7 +151,7 @@ def _row(label: str, recs: list[dict]) -> str:
     fp = [r for r in recs if r["findings"]]
     by_rule = Counter(rule for r in fp for rule in {f["rule"] for f in r["findings"]})
     rules = ", ".join(f"{k}: {v}" for k, v in sorted(by_rule.items())) or "-"
-    fp_full = sum(1 for r in full if r["findings"])
+    fp_full = sum(1 for r in fp if r["status"] == "ok")
     return (
         f"| {label} | {len(recs)} | {len(full)} | {len(incomplete)} | "
         f"{len(fp)} ({fp_full} of them fully scanned) | {rules} |"
@@ -211,7 +215,7 @@ def report(records: list[dict]) -> str:
 
 
 def _select(corpus: list[dict], only: list[str], extra: list[str]) -> list[dict]:
-    chosen = corpus
+    chosen = list(corpus)
     if only:
         wanted = {tuple(o.split(":", 1)) for o in only}
         chosen = [p for p in corpus if (p["ecosystem"], p["name"]) in wanted]

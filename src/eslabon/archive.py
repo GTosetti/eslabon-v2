@@ -240,6 +240,19 @@ _DETAILS = {
 }
 
 
+def _note_path(
+    name: str, ecosystem: str, seen: set[str], anomalies: list[Anomaly]
+) -> str:
+    """Normalise a member name, record its path anomalies, and note repeats."""
+    norm, kinds = normalize_path(name, ecosystem)
+    for k in kinds:
+        anomalies.append(_anomaly(k, name, _DETAILS[k]))
+    if norm in seen:
+        anomalies.append(_anomaly("duplicate_name", name, "normalised name repeats"))
+    seen.add(norm)
+    return norm
+
+
 def iter_members(
     path: Path,
     ecosystem: str,
@@ -452,14 +465,16 @@ def _read_zip_member_body(
     members that fail later (e.g. on a bad CRC), so failures are not free.
     """
     raw_name = info.orig_filename  # stored name, not the host-mapped .filename
-    buf = bytearray()
+    chunks: list[bytes] = []
+    size = 0
     try:
         for chunk in _zip_chunks(zf, info, limits):
-            buf += chunk
+            chunks.append(chunk)
+            size += len(chunk)
             stats.bytes_read += len(chunk)
             if stats.bytes_read > limits.max_total:
                 raise LimitsExceeded(f"decompressed total exceeds {limits.max_total}")
-            if len(buf) > limits.max_file:
+            if size > limits.max_file:
                 raise LimitsExceeded(f"member larger than {limits.max_file}")
     except (MemoryError, RecursionError):
         raise
@@ -473,7 +488,7 @@ def _read_zip_member_body(
     except _BAD_MEMBER_ERRORS as exc:
         anomalies.append(_anomaly("bad_member", raw_name, type(exc).__name__))
         return None
-    return bytes(buf)
+    return b"".join(chunks)
 
 
 _ZIP_SYMLINK = "symlink mode bit set; pip installs it as a regular file"
@@ -507,7 +522,7 @@ def _iter_zip(
         # zipfile walks the central directory by size, not by the declared count.
         if len(infos) > limits.max_members:
             raise LimitsExceeded(f"more than {limits.max_members} members")
-        seen: dict[str, int] = {}
+        seen: set[str] = set()
         for index, info in enumerate(infos):
             # Decide on the name as stored: on Windows zipfile maps os.sep ("\\") to
             # "/" in .filename (and truncates at NUL), so .filename would make the
@@ -526,14 +541,7 @@ def _iter_zip(
                 # pip ignores zip symlink bits and writes the entry as a regular
                 # file, so it must be scanned, not skipped (unlike tar links).
                 anomalies.append(_anomaly("zip_symlink", name, _ZIP_SYMLINK))
-            norm, kinds = normalize_path(name, ecosystem)
-            for k in kinds:
-                anomalies.append(_anomaly(k, name, _DETAILS[k]))
-            if norm in seen:
-                anomalies.append(
-                    _anomaly("duplicate_name", name, "normalised name repeats")
-                )
-            seen[norm] = index
+            norm = _note_path(name, ecosystem, seen, anomalies)
             body = _read_zip_member(zf, info, limits, anomalies, stats)
             if body is None:
                 continue
@@ -625,7 +633,7 @@ def _iter_tar(
     anomalies: list[Anomaly],
     stats: TarStats,
 ) -> Iterator[Member]:
-    seen: dict[str, int] = {}
+    seen: set[str] = set()
     state = _TarState()
     tar = tarfile.open(fileobj=reader, mode="r|", tarinfo=_guarded_tarinfo(state))
     try:
@@ -653,14 +661,7 @@ def _iter_tar(
                 continue
             if unknown:
                 anomalies.append(_anomaly("unknown_type", m.name, _UNKNOWN_DETAIL))
-            norm, kinds = normalize_path(m.name, ecosystem)
-            for k in kinds:
-                anomalies.append(_anomaly(k, m.name, _DETAILS[k]))
-            if norm in seen:
-                anomalies.append(
-                    _anomaly("duplicate_name", m.name, "normalised name repeats")
-                )
-            seen[norm] = index
+            norm = _note_path(m.name, ecosystem, seen, anomalies)
             f = tar.extractfile(m)
             data = f.read(limits.max_file + 1) if f is not None else b""
             if len(data) > limits.max_file:

@@ -231,7 +231,7 @@ def analyze_archive(path: Path, pkg: PackageRef, limits: Limits) -> ScanResult:
     status, error = "ok", None
     try:
         for m in iter_members(path, eco, limits, anomalies, stats=stats):
-            raw = m.raw_path or m.path
+            raw = m.stored_path
             picker.see(m, raw, is_rewritten(raw, eco), stats.kind)
             for analyze in ANALYZERS:
                 findings.extend(analyze(m, ctx))

@@ -29,6 +29,11 @@ class Member:
     data: bytes
     raw_path: str = ""  # member name exactly as stored in the archive
 
+    @property
+    def stored_path(self) -> str:
+        """The name as stored when known, else the normalised path."""
+        return self.raw_path or self.path
+
 
 # Anomaly kinds: traversal, absolute_path, link_skipped, zip_symlink, duplicate_name,
 # encrypted_member, unsupported_compression, bad_member, unknown_type, weak_hash_sha1,

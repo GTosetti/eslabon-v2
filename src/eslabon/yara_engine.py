@@ -50,7 +50,7 @@ def is_install_setup_py(m: Member, ctx: ScanContext) -> bool:
     ``<top dir>/setup.py``. A wheel's setup.py is never run by pip."""
     if ctx.pkg.ecosystem != "pypi" or ctx.archive_kind != "sdist":
         return False
-    return any(_SETUP_PY.fullmatch(r) for r in path_readings(m.raw_path or m.path))
+    return any(_SETUP_PY.fullmatch(r) for r in path_readings(m.stored_path))
 
 
 def _octet_readings(octet: str) -> set[int]:
@@ -161,7 +161,7 @@ def scan_member(m: Member, ctx: ScanContext) -> list[Finding]:
             merged[esl_id] = (min(first, off), count + 1)
 
     data = m.data
-    name_hex = to_hex(m.raw_path or m.path)
+    name_hex = to_hex(m.stored_path)
     out: list[Finding] = []
     for esl_id, (off, count) in sorted(merged.items()):
         out.append(
