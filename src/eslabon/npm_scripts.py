@@ -115,6 +115,11 @@ def _text(data: bytes) -> str:
     return text[1:] if text.startswith(chr(0xFEFF)) else text
 
 
+def _reject_constant(name: str) -> int:
+    """NaN, Infinity and -Infinity: Python accepts them, JSON.parse does not."""
+    raise ValueError(f"{name} is not JSON")
+
+
 def load_package_json(data: bytes) -> tuple[dict | None, str | None]:
     """Parse package.json as npm does: (object, None), or (None, anomaly kind).
 
@@ -127,7 +132,7 @@ def load_package_json(data: bytes) -> tuple[dict | None, str | None]:
     duplicate key wins, as with JSON.parse.
     """
     try:
-        doc = json.loads(_text(data), parse_int=len, parse_constant=len)
+        doc = json.loads(_text(data), parse_int=len, parse_constant=_reject_constant)
     except RecursionError:
         return None, PACKAGE_JSON_TOO_DEEP
     except ValueError:
@@ -142,12 +147,41 @@ def package_json_anomaly(kind: str, raw: str) -> Anomaly:
     return Anomaly(kind, to_hex(raw), _DETAIL[kind])
 
 
+_JSON_TOKEN = re.compile(r'"(?:[^"\\]|\\.)*"|[{}\[\]]')
+_SCRIPTS_OPEN = re.compile(r"\s*:\s*\{")
+
+
+def _scripts_span(text: str) -> tuple[int, int] | None:
+    """Offsets of the top-level ``"scripts"`` object ({ .. }) in the raw text,
+    or None. Walks only strings and brackets, so braces inside strings or the
+    nested ``"config"`` object do not count."""
+    depth, pending, begin = 0, False, -1
+    for tok in _JSON_TOKEN.finditer(text):
+        t = tok.group()
+        if t[0] == '"':
+            if depth == 1 and begin < 0 and t == '"scripts"':
+                pending = _SCRIPTS_OPEN.match(text, tok.end()) is not None
+            continue
+        if t in "{[":
+            depth += 1
+            if pending and t == "{":
+                begin, pending = tok.start(), False
+        else:
+            depth -= 1
+            if begin >= 0 and depth == 1 and t == "}":
+                return begin, tok.end()
+    return None
+
+
 def _key_line(text: str, key: str) -> int:
-    """1-based line of the last ``"key":`` in the raw text (the one JSON.parse
-    keeps), or 1 if it is not found verbatim (e.g. written with escapes)."""
+    """1-based line of the ``"key":`` inside the top-level ``"scripts"`` object
+    (the one npm runs). If that object cannot be located, the last ``"key":``
+    anywhere, or 1 if it is not found verbatim (e.g. written with escapes)."""
+    span = _scripts_span(text)
+    lo, hi = span if span else (0, len(text))
     start = -1
-    for hit in re.finditer(r'"' + key + r'"\s{0,100}:', text):
-        start = hit.start()
+    for hit in re.finditer(r'"' + key + r'"\s{0,100}:', text[lo:hi]):
+        start = lo + hit.start()
     return text.count("\n", 0, start) + 1 if start >= 0 else 1
 
 

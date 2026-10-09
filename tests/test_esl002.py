@@ -159,6 +159,28 @@ def test_load_package_json():
     assert npm_scripts.load_package_json(bom + bom + b"{}")[1] == "bad_package_json"
 
 
+@pytest.mark.parametrize("token", [b"NaN", b"Infinity", b"-Infinity"])
+def test_non_json_number_constants_are_bad_package_json(token):
+    # JSON.parse (what npm uses) rejects these; Python's json accepts them by default
+    data = b'{"a":' + token + b"}"
+    assert npm_scripts.load_package_json(data) == (None, "bad_package_json")
+
+
+def test_key_line_is_the_scripts_install_not_a_later_config_key():
+    data = (
+        b"{\n"
+        b'  "name": "demo",\n'
+        b'  "version": "1.0.0",\n'
+        b'  "scripts": {"install": "' + NODE_E.encode() + b' x"},\n'
+        b'  "description": "demo package",\n'
+        b'  "config": {"install": true}\n'
+        b"}\n"
+    )
+    found, _ = _scan(data)
+    assert len(found) == 1
+    assert found[0].line == 4
+
+
 # ---------------------------------------------------------- more shapes ----
 
 
