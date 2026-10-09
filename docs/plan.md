@@ -142,7 +142,8 @@ class PackageRef: name: str | None; version: str | None; ecosystem: str; archive
 # from inside it (sdist PKG-INFO, wheel *.dist-info/METADATA, npm package/package.json) and
 # are attacker-controlled; if absent: name=None, anomaly no_metadata. (As built, R42/R46/
 # R47: ESL-005/006 then use the name and version from the archive's file name; with no
-# name at all, anomaly no_identity -> status incomplete, and osv_status unavailable.)
+# name at all, anomaly no_identity -> status incomplete, and osv_status unavailable
+# (skipped under --offline).)
 @dataclass(frozen=True)
 class ScanContext: rules: "yara.Rules"; limits: Limits; pkg: PackageRef
 # Every analyser has the signature  Callable[[Member, ScanContext], list[Finding]]

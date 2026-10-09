@@ -111,7 +111,7 @@ ESL001_ACTION = (
 )
 
 
-def test_esl001_action_recommends_isolated_build():
+def test_esl001_action_recommends_sandboxed_build():
     assert load_catalog()["ESL-001"].action == ESL001_ACTION
 
 

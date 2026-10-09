@@ -126,7 +126,7 @@ design §5 (residual gaps), the catalog's `residual_gap` text, and the reviews o
    whole environment (ruling R40).
 
 **ESL-005** (`typosquat`)
-1. Typosquats of packages ranked below 1,000 (design §5). On npm this misses historical
+1. Typosquats of packages outside the top 1,000 (design §5). On npm this misses historical
    squats of `jquery`, `cross-env` and `mongoose` ([`measurements.md`](measurements.md)).
    Raising the npm cutoff to 2,000 was measured at +6 false positives per 1,000 names for
    +2 historical hits, and was not taken (ruling R44).
