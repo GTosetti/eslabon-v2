@@ -16,6 +16,7 @@ from importlib.resources import files
 import pytest
 
 from eslabon import typosquat
+from eslabon.names import normalize
 from eslabon.sanitize import to_hex
 from eslabon.typosquat import (
     TopList,
@@ -23,7 +24,6 @@ from eslabon.typosquat import (
     distance,
     identity_from_filename,
     name_from_filename,
-    normalize,
 )
 
 PYPI = TopList.from_names(

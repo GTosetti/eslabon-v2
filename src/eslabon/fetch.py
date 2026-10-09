@@ -39,8 +39,9 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import quote, unquote, urlsplit
 
-from eslabon import __version__, typosquat
+from eslabon import __version__
 from eslabon.model import Anomaly, FetchError, HashMismatch, Limits, LimitsExceeded
+from eslabon.names import registry_key
 
 ALLOWED_HOSTS = frozenset({"pypi.org", "files.pythonhosted.org", "registry.npmjs.org"})
 TIMEOUT_S = 30.0  # socket timeout, per connect/read
@@ -267,7 +268,7 @@ def pick_pypi_file(entries: list[dict]) -> dict | None:
 
 
 def pypi_url(name: str, version: str) -> str:
-    norm = typosquat.registry_key(name, "pypi")
+    norm = registry_key(name, "pypi")
     return f"{PYPI_API}/{quote(norm, safe='')}/{quote(version, safe='')}/json"
 
 

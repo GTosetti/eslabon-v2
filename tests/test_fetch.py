@@ -1119,3 +1119,21 @@ def test_npm_concrete_version_and_pypi_unchanged(out):
     cli._parse_argument("ms==2.1.3", "npm")
     cli._parse_argument("ms==0.0.1-beta.1", "npm")
     assert cli._parse_argument("pkg==latest", "pypi") == ("pkg", "latest", "pypi")
+
+
+# ------------------------------------------------------------ R62 #9 ------
+
+
+def test_names_module_is_shared_and_fetch_does_not_import_typosquat():
+    import subprocess
+    import sys
+
+    from eslabon import names
+
+    assert names.registry_key("Foo_Bar.baz", "pypi") == "foo-bar-baz"
+    assert names.registry_key("@Scope/Pkg_x", "npm") == "@scope/pkg_x"
+    assert names.normalize("Foo__Bar", "pypi") == "foo-bar"
+    assert names.normalize("@Scope/Pkg", "npm") == "pkg"
+    code = "import sys, eslabon.fetch; sys.exit('eslabon.typosquat' in sys.modules)"
+    run = subprocess.run([sys.executable, "-I", "-c", code])  # noqa: S603
+    assert run.returncode == 0

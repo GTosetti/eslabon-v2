@@ -37,6 +37,7 @@ from eslabon.model import (
     PackageRef,
     ScanResult,
 )
+from eslabon.names import registry_key
 from eslabon.sanitize import clean_text
 from eslabon.scan import analyze_archive, archive_kind, worst_status
 from eslabon.worker import run_isolated
@@ -345,8 +346,7 @@ def _same_requested(meta: str, requested: str, ecosystem: str) -> bool:
     """Same registry name (npm: case-folded, scope kept; PyPI: PEP 503)."""
     if ecosystem == "npm":
         return meta.lower() == requested.lower()
-    key = typosquat.registry_key
-    return key(meta, "pypi") == key(requested, "pypi")
+    return registry_key(meta, "pypi") == registry_key(requested, "pypi")
 
 
 def _argument_identity(

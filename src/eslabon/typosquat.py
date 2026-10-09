@@ -28,6 +28,7 @@ from functools import cache
 from importlib.resources import files
 
 from eslabon.model import Finding
+from eslabon.names import normalize, registry_key, split_scope
 from eslabon.sanitize import clean_text, to_hex
 
 RULE_ID = "ESL-005"
@@ -39,34 +40,10 @@ D2_MIN_LEN = 6  # distance 2 needs at least this length
 # distance 2 of any top-1,000 name anyway, so skipping it loses nothing.
 MAX_NAME = 214
 _ECOSYSTEMS = ("pypi", "npm")
-_PEP503 = re.compile(r"[-_.]+")
 _EVIDENCE_CAP = 512
 
 # Tests replace this with small fixture lists ({ecosystem: TopList}).
 _OVERRIDE: dict[str, TopList] = {}
-
-
-def _split_scope(name: str) -> tuple[str, str] | None:
-    """(scope, bare) of an npm ``@scope/bare`` name, lowercased; else None."""
-    if name.startswith("@") and "/" in name:
-        scope, bare = name[1:].split("/", 1)
-        return scope.lower(), bare.lower()
-    return None
-
-
-def registry_key(name: str, ecosystem: str) -> str:
-    """Exemption key: the full name (scope kept), case-folded as the registry does."""
-    if ecosystem == "npm":
-        return name.lower()
-    return _PEP503.sub("-", name).lower()
-
-
-def normalize(name: str, ecosystem: str) -> str:
-    """Comparison key: PEP 503 for PyPI; npm lowercased with ``@scope/`` stripped."""
-    if ecosystem == "npm":
-        scoped = _split_scope(name)
-        return scoped[1] if scoped else name.lower()
-    return _PEP503.sub("-", name).lower()
 
 
 def threshold(normalized: str) -> int:
@@ -145,12 +122,12 @@ class TopList:
         targets = tuple(
             (normalize(n, ecosystem), n)
             for n in names[:target_top]
-            if ecosystem != "npm" or _split_scope(n) is None
+            if ecosystem != "npm" or split_scope(n) is None
         )
         owned: frozenset[str] = frozenset()
         if ecosystem == "npm":
             owned = frozenset(
-                sc[0] for n in names[:exempt_top] if (sc := _split_scope(n))
+                sc[0] for n in names[:exempt_top] if (sc := split_scope(n))
             )
         return cls(exempt=exempt, targets=targets, owned_scopes=owned)
 
@@ -186,7 +163,7 @@ def check(name: str, ecosystem: str, top: TopList | None = None) -> Finding | No
         return None
     if registry_key(name, ecosystem) in top.exempt:
         return None
-    scoped = _split_scope(name) if ecosystem == "npm" else None
+    scoped = split_scope(name) if ecosystem == "npm" else None
     if scoped is not None:
         return _scope_confusion(name, scoped, top)
     key = normalize(name, ecosystem)
@@ -295,7 +272,7 @@ def same_identity(meta: str, from_file: str, ecosystem: str) -> bool:
     """True if the metadata name and the file name name the same package."""
     if ecosystem == "npm":
         f = from_file.lower()
-        scoped = _split_scope(meta)
+        scoped = split_scope(meta)
         if scoped:
             scope, bare = scoped
             return f in (bare, f"{scope}-{bare}")
