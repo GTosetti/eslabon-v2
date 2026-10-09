@@ -156,10 +156,11 @@ def _scripts_span(text: str) -> tuple[int, int] | None:
     or None. Walks only strings and brackets, so braces inside strings or the
     nested ``"config"`` object do not count."""
     depth, pending, begin = 0, False, -1
+    last = None  # JSON.parse keeps the LAST duplicate top-level key (M2)
     for tok in _JSON_TOKEN.finditer(text):
         t = tok.group()
         if t[0] == '"':
-            if depth == 1 and begin < 0 and t == '"scripts"':
+            if depth == 1 and t == '"scripts"':
                 pending = _SCRIPTS_OPEN.match(text, tok.end()) is not None
             continue
         if t in "{[":
@@ -169,15 +170,15 @@ def _scripts_span(text: str) -> tuple[int, int] | None:
         else:
             depth -= 1
             if begin >= 0 and depth == 1 and t == "}":
-                return begin, tok.end()
-    return None
+                last, begin = (begin, tok.end()), -1
+    return last
 
 
-def _key_line(text: str, key: str) -> int:
+def _key_line(text: str, key: str, span: tuple[int, int] | None) -> int:
     """1-based line of the ``"key":`` inside the top-level ``"scripts"`` object
-    (the one npm runs). If that object cannot be located, the last ``"key":``
-    anywhere, or 1 if it is not found verbatim (e.g. written with escapes)."""
-    span = _scripts_span(text)
+    (the one npm runs), given its ``span`` from _scripts_span. If that object
+    cannot be located, the last ``"key":`` anywhere, or 1 if it is not found
+    verbatim (e.g. written with escapes)."""
     lo, hi = span if span else (0, len(text))
     start = -1
     for hit in re.finditer(r'"' + key + r'"\s{0,100}:', text[lo:hi]):
@@ -225,6 +226,7 @@ def scan_package_json(m: Member, ctx: ScanContext) -> list[Finding]:
 
     total, first = 0, None  # first = (line, script) of the earliest matching key
     text = _text(m.data)
+    span = _scripts_span(text)  # once per package.json, not once per key (M1)
     for key in LIFECYCLE:
         script = scripts.get(key)
         if not isinstance(script, str):
@@ -237,7 +239,7 @@ def scan_package_json(m: Member, ctx: ScanContext) -> list[Finding]:
         if not count:
             continue
         total += count
-        line = _key_line(text, key)
+        line = _key_line(text, key, span)
         if first is None or line < first[0]:
             first = (line, script)
     if first is None:

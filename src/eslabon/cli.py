@@ -119,7 +119,7 @@ def _parse_argument(text: str, ecosystem: str | None) -> tuple[str, str, str]:
     bare = name.rsplit("/", 1)[-1]
     if not (fetch.has_alnum(bare) and fetch.has_alnum(version)):
         raise UsageError("name and version need a letter or digit")
-    if ecosystem == "npm" and not version[0].isdigit():
+    if ecosystem == "npm" and not (version[0].isascii() and version[0].isdigit()):
         # a dist-tag (latest, next) is not a version: OSV and the metadata
         # check would be asked about the tag itself (R62 #4)
         raise UsageError(
@@ -193,10 +193,17 @@ _TEMP_UNSAFE = "temp dir inside working tree"
 
 
 def _git_root(start: Path) -> Path | None:
-    """Nearest ancestor of ``start`` (itself included) with a ``.git`` entry."""
+    """Nearest ancestor of ``start`` (itself included) with a ``.git`` entry.
+
+    Only "absent" is a no answer; any other OSError propagates so that the
+    caller fails closed (M4: os.path.lexists would swallow it).
+    """
     for directory in (start, *start.parents):
-        if os.path.lexists(directory / ".git"):  # a dir, or a file (worktree)
-            return directory
+        try:
+            os.lstat(directory / ".git")  # a dir, or a file (worktree)
+        except (FileNotFoundError, NotADirectoryError):
+            continue
+        return directory
     return None
 
 

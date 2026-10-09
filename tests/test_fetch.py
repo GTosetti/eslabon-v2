@@ -1076,6 +1076,28 @@ def test_temp_dir_check_fails_closed_on_stat_error(tmp_path, monkeypatch):
         elsewhere.rmdir()
 
 
+def test_git_probe_permission_error_fails_closed(tmp_path, monkeypatch):
+    # M4: an OSError other than "absent" must not read as "no .git here"
+    elsewhere = Path(tempfile.mkdtemp(prefix="eslabon-test-"))
+    try:
+        if tmp_path.resolve() in elsewhere.resolve().parents:
+            pytest.skip("system temp is inside the cwd")
+        (tmp_path / ".git").mkdir()
+        monkeypatch.chdir(tmp_path)
+        real_stat = os.stat
+
+        def denied(path, *a, **k):
+            if os.path.basename(os.fspath(path)) == ".git":
+                raise PermissionError("denied")
+            return real_stat(path, *a, **k)
+
+        monkeypatch.setattr(cli.os, "stat", denied)
+        monkeypatch.setattr(cli.os, "lstat", denied, raising=False)
+        assert cli._temp_dir_unsafe(elsewhere)
+    finally:
+        elsewhere.rmdir()
+
+
 # ------------------------------------------------------- R61: git root ----
 
 
@@ -1119,6 +1141,15 @@ def test_npm_concrete_version_and_pypi_unchanged(out):
     cli._parse_argument("ms==2.1.3", "npm")
     cli._parse_argument("ms==0.0.1-beta.1", "npm")
     assert cli._parse_argument("pkg==latest", "pypi") == ("pkg", "latest", "pypi")
+
+
+def test_npm_version_with_unicode_digit_is_a_usage_error(out, capsys):
+    # M6: str.isdigit() accepts "¹"; the _TARGET regex is ASCII-only and
+    # already rejects it, so this is a guard against the isdigit check regressing
+    with pytest.raises(cli.UsageError):
+        cli._parse_argument("ms==¹.0.0", "npm")
+    assert _main("ms==¹.0.0", out, "--ecosystem", "npm", "--offline") == 2
+    assert not out.exists()
 
 
 # ------------------------------------------------------------ R62 #9 ------
