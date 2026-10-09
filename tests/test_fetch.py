@@ -928,6 +928,7 @@ def test_dist_url_with_newline_rejected_before_download():
 
 
 def test_temp_dir_inside_working_tree_fails_closed(out, monkeypatch, track):
+    (out.parent.parent / ".git").mkdir()  # R61: the cwd is a git working tree
     inside = out.parent.parent / "tmp-inside"
     inside.mkdir()
     monkeypatch.setattr(tempfile, "tempdir", str(inside))
@@ -943,6 +944,7 @@ def test_temp_dir_inside_working_tree_fails_closed(out, monkeypatch, track):
 
 
 def test_protected_temp_locations(tmp_path, monkeypatch):
+    (tmp_path / ".git").mkdir()
     monkeypatch.chdir(tmp_path)
     assert cli._temp_dir_unsafe(tmp_path / "eslabon-x")
     assert cli._temp_dir_unsafe(REPO / "eslabon-x")
@@ -1014,6 +1016,7 @@ SPELLINGS = ["plain", "case", "8.3", "extended", "unc", "extended_unc"]
 def test_temp_dir_inside_cwd_detected_whatever_the_spelling(
     tmp_path, monkeypatch, kind
 ):
+    (tmp_path / ".git").mkdir()
     monkeypatch.chdir(tmp_path)
     inside = tmp_path / "Some Dir" / "eslabon-x"
     inside.mkdir(parents=True)
@@ -1036,6 +1039,7 @@ def test_temp_dir_inside_cwd_detected_whatever_the_spelling(
 @pytest.mark.skipif(not WINDOWS, reason="Windows path spellings")
 @pytest.mark.parametrize("kind", ["extended", "unc", "extended_unc"])
 def test_temp_dir_spelled_into_working_tree_fails_closed(out, monkeypatch, track, kind):
+    (out.parent.parent / ".git").mkdir()
     inside = out.parent.parent / "tmpin"
     inside.mkdir()
     spelled = _spelling(kind, inside)
@@ -1059,6 +1063,7 @@ def test_temp_dir_check_fails_closed_on_stat_error(tmp_path, monkeypatch):
     try:
         if tmp_path.resolve() in elsewhere.resolve().parents:
             pytest.skip("system temp is inside the cwd")
+        (tmp_path / ".git").mkdir()
         monkeypatch.chdir(tmp_path)
         assert not cli._temp_dir_unsafe(elsewhere)
 
@@ -1069,3 +1074,29 @@ def test_temp_dir_check_fails_closed_on_stat_error(tmp_path, monkeypatch):
         assert cli._temp_dir_unsafe(elsewhere)
     finally:
         elsewhere.rmdir()
+
+
+# ------------------------------------------------------- R61: git root ----
+
+
+def test_cwd_ancestor_of_temp_and_not_a_git_repo_is_safe(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)  # no .git here: the cwd is not protected
+    assert not cli._temp_dir_unsafe(tmp_path / "sub" / "eslabon-x")
+    assert not cli._temp_dir_unsafe(tmp_path / "eslabon-x")
+
+
+def test_temp_dir_inside_git_repo_of_cwd_is_unsafe(tmp_path, monkeypatch):
+    (tmp_path / ".git").mkdir()
+    monkeypatch.chdir(tmp_path)
+    assert cli._temp_dir_unsafe(tmp_path / "a" / "eslabon-x")
+
+
+def test_cwd_in_subdir_of_git_repo_protects_the_whole_repo(tmp_path, monkeypatch):
+    (tmp_path / ".git").write_text("gitdir: elsewhere")  # a file counts too
+    sub = tmp_path / "pkg" / "deep"
+    sub.mkdir(parents=True)
+    other = tmp_path / "docs"
+    other.mkdir()
+    monkeypatch.chdir(sub)
+    assert cli._temp_dir_unsafe(other / "eslabon-x")
+    assert cli._temp_dir_unsafe(sub / "eslabon-x")

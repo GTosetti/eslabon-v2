@@ -41,7 +41,7 @@ Scan a local archive. `--offline` skips the OSV query (ESL-006) and records
 ```
 
 Scan a package straight from the registry. It is downloaded over HTTPS into a temporary
-directory outside the working tree, its registry hash is verified, it is scanned in
+directory outside the git working tree of the current directory, its registry hash is verified, it is scanned in
 memory and deleted:
 
 ```powershell
@@ -259,7 +259,10 @@ Eslabon processes hostile input. The full threat table, with the test for each r
 - **Nothing is extracted to disk.** Archives are read in memory, streaming. Traversal,
   absolute and drive paths are recorded as anomalies; symlinks and hardlinks are never
   followed. The only hostile bytes written to disk are a registry download, in a temporary
-  directory outside the working tree, deleted after the scan.
+  directory outside the git working tree that contains the current directory (and outside
+  Eslabon's own tree), deleted after the scan. If the temp dir would land inside either
+  (`TEMP` pointing into the repo), nothing is fetched: `fetch_error`. Outside any git
+  repo the current directory itself is not protected (R61).
 - **Caps.** The download (or the local archive) is capped at 50 MiB as stored; inside
   it, bytes actually decompressed are counted: 200 MiB total, 10 MiB per file, 5,000
   members; a zip's declared entry count and directory size are checked before

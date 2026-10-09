@@ -716,7 +716,8 @@ Test: `tests/test_osv.py`.
   wheel and sdist choice and the scoped-name `%2f` encoding from §4.
 - `download(a: Artifact, dest: Path, limits: Limits, opener=None) -> tuple[Path, list[Anomaly]]`:
   - It writes **only** the downloaded archive, to a `tempfile.mkdtemp()` directory outside
-    the repo.
+    the git working tree containing the cwd (nearest ancestor with a `.git` entry; none =
+    cwd not protected, R61) and outside Eslabon's own tree.
   - It counts bytes as they arrive and raises `LimitsExceeded` above `max_download`.
   - It verifies the hash and raises `HashMismatch`. A sha1 artifact adds the anomaly
     `weak_hash_sha1`.

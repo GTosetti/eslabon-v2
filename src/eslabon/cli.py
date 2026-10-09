@@ -184,17 +184,32 @@ def _scan_registry(
 _TEMP_UNSAFE = "temp dir inside working tree"
 
 
+def _git_root(start: Path) -> Path | None:
+    """Nearest ancestor of ``start`` (itself included) with a ``.git`` entry."""
+    for directory in (start, *start.parents):
+        if os.path.lexists(directory / ".git"):  # a dir, or a file (worktree)
+            return directory
+    return None
+
+
 def _protected_roots() -> list[Path]:
-    """The cwd and the Eslabon source tree (repo root when run from src/)."""
+    """The git working tree containing the cwd and the Eslabon source tree.
+
+    Outside any git repo the cwd itself is not protected (R61): a cwd such as
+    the home directory or a drive root is an ancestor of every temp dir.
+    """
     package = Path(__file__).resolve().parent
-    roots = [Path.cwd().resolve(), package]
+    roots = [package]
     if package.parent.name == "src":
         roots.append(package.parent.parent)
+    git = _git_root(Path.cwd().resolve())
+    if git is not None:
+        roots.append(git)
     return roots
 
 
 def _temp_dir_unsafe(tmp: Path) -> bool:
-    """True if ``tmp`` is inside the cwd or the repo, or that cannot be told.
+    """True if ``tmp`` is inside the cwd's git repo or Eslabon's, or cannot be told.
 
     Two checks. Textual: the resolved path under a resolved root (covers case
     and 8.3 spellings). By file identity: every existing entry of ``tmp`` and
