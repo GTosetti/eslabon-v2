@@ -226,7 +226,7 @@ def scan_package_json(m: Member, ctx: ScanContext) -> list[Finding]:
 
     total, first = 0, None  # first = (line, script) of the earliest matching key
     text = _text(m.data)
-    span = _scripts_span(text)  # once per package.json, not once per key (M1)
+    span: tuple[int, int] | None | bool = False  # walked on the first match only (M1)
     for key in LIFECYCLE:
         script = scripts.get(key)
         if not isinstance(script, str):
@@ -239,6 +239,8 @@ def scan_package_json(m: Member, ctx: ScanContext) -> list[Finding]:
         if not count:
             continue
         total += count
+        if span is False:
+            span = _scripts_span(text)
         line = _key_line(text, key, span)
         if first is None or line < first[0]:
             first = (line, script)

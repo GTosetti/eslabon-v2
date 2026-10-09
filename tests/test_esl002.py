@@ -203,6 +203,22 @@ def test_scripts_span_computed_once_per_package_json(monkeypatch):
     assert len(calls) == 1
 
 
+def test_scripts_span_not_computed_without_a_match(monkeypatch):
+    # the span only locates a finding's line: a clean package.json must not pay
+    # for a full token walk of up to 10 MiB
+    calls = []
+    real = npm_scripts._scripts_span
+
+    def counting(text):
+        calls.append(len(text))
+        return real(text)
+
+    monkeypatch.setattr(npm_scripts, "_scripts_span", counting)
+    found, _ = _scan(_pkg_json({"install": "node-gyp rebuild", "test": "jest"}))
+    assert found == []
+    assert calls == []
+
+
 def test_duplicate_scripts_key_line_is_the_last_object():
     # M2: JSON.parse keeps the LAST top-level "scripts"; the span must too
     data = (
