@@ -12,8 +12,6 @@
 id_rsa*
 id_ed25519*
 *.token
-/Tocken API HackerOne.txt
-inventario.md
 
 # --- Local-only notes (Spanish working notes, not part of the public repo)
 PROMPT-INICIAL.md

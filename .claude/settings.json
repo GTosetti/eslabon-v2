@@ -78,10 +78,8 @@
       "PowerShell(python setup.py *)",
       "PowerShell(uv *)",
       "PowerShell(pipx *)",
-      "Read(//c/Users/CD/Desktop/GG/GG+-portable-2026-10-05/GG+/.env)",
-      "Read(//c/Users/CD/Desktop/GG/GG+-portable-2026-10-05/GG+/06-bugbounty/.env)",
-      "Read(//c/Users/CD/Desktop/GG/GG+-portable-2026-10-05/GG+/Tocken API HackerOne.txt)",
-      "Read(//c/Users/CD/Desktop/GG/GG+-portable-2026-10-05/GG+/01-lab/inventario.md)"
+      "Read(./.env)",
+      "Read(./.env.*)"
     ]
   }
 }
