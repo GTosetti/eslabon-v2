@@ -106,7 +106,8 @@ def test_tactics_v19_2():
 
 
 ESL001_ACTION = (
-    "Prefer wheels (no setup.py runs); build sdists only after review, "
+    "Prefer wheels (no setup.py runs) and scan the exact wheel you will install; "
+    "a registry scan of the sdist does not cover it. Build sdists only after review, "
     "in a sandboxed build (container or VM) with egress blocked."
 )
 

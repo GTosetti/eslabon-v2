@@ -109,7 +109,10 @@ All six are `limits_exceeded` from Eslabon's own caps (`Limits`: 5,000 members, 
 per member). They give no verdict. They are the caps working as designed, not parser
 bugs, so they are listed instead of raised. For PyPI the sdist is chosen first, by
 design (`setup.py`, which ESL-001 judges, lives there), and sdists of compiled projects
-carry vendored sources.
+carry vendored sources. For the same reason the PyPI half of this measurement is a result
+on the artifact registry mode picks, the sdist wherever one exists: it does not carry
+over to the wheels pip would install, which were not scanned
+([roadmap §8](roadmap.md#8-scanning-the-artifact-pip-installs)).
 
 How a cap behaves: a per-file, member-count or total cap **aborts the remaining
 members** of the archive. Findings from members read before the cap are kept and
@@ -130,9 +133,19 @@ A diagnostic pass outside the shipped pipeline (no member-count cap, but members
 larger than 10 MiB skipped, so `etree.c` and the esbuild binary were NOT read) found no
 ESL-001, ESL-003 or ESL-004 condition met in the remaining members of these six.
 
-Future work (roadmap, task 19): fall back to a wheel when a PyPI sdist hits a cap, and
-skip an oversize member (recording an anomaly) and continue instead of aborting the
-remaining members.
+Scanning the wheel instead of the sdist would not clear most of these. The manylinux
+x86_64 wheels of numpy 2.5.3 (`_multiarray_umath…so`, 10,633,113 bytes, and
+`libscipy_openblas64_…so`, 24,325,657), scipy 1.18.1 (`libscipy_openblas…so`,
+25,094,609), ruff 0.16.10 (`ruff-0.16.10.data/scripts/ruff`, 23,998,752) and grpcio
+1.84.0 (`cygrpc…so`, 16,619,808) each carry a member over the 10 MiB per-file cap, which
+aborts the rest of the archive just as the member-count cap does in their sdists. Only
+lxml's wheel has no member over the cap, so the wheel alone would clear 1 of these 6.
+Measured on 2026-10-12 by reading only each wheel's zip central directory over HTTP
+range requests, with nothing decompressed.
+
+Future work ([roadmap §3](roadmap.md#3-archive-anomalies-beyond-v01)): skip an oversize
+member (recording an anomaly) and continue instead of aborting the remaining members.
+That has to come before scanning wheels ([roadmap §8](roadmap.md#8-scanning-the-artifact-pip-installs)).
 
 ### Watch list from the reviews
 

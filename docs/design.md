@@ -1,7 +1,8 @@
 # Eslabon — design
 
-> Status: draft for approval (2026-10-05). Progress is tracked in stages with exit
-> conditions (`E0`…`E8`), never in time.
+> Status: the design v0.1 was built to (written 2026-10-05). What is not built is in
+> `docs/roadmap.md`; what v0.1 misses is in the README's *"What this does not detect"*.
+> Progress was tracked in stages with exit conditions (§10), never in time.
 > A chain is only as strong as its weakest link.
 
 ## 1. Purpose and success
@@ -35,23 +36,41 @@ Anything not needed for this list goes to `docs/roadmap.md` and is not built in 
 
 | Tool | What it does | Gap Eslabon targets |
 |---|---|---|
-| DataDog GuardDog (Apache-2.0) | Code and metadata heuristics on 7 ecosystems. In 3.0 (2026-06-26) it moved from Semgrep to YARA and added a 0–10 risk score. It scans inside a kernel sandbox | Output is JSON or SARIF. No ATT&CK technique mapping. Its only SIEM path is Datadog's own |
-| OSV-Scanner (Google) | Matches lockfiles against known advisories | Sees only what has already been reported |
-| Packj (AGPL-3.0) | Static, metadata and **dynamic** (strace) analysis | Executes what it analyses |
+| DataDog GuardDog (Apache-2.0) | Code and metadata heuristics on 7 ecosystems (Rust added in 3.2.0). 3.0.0 (2026-06-23) moved from Semgrep to YARA and added a 0–10 risk score. Extraction and scanning run in a sandbox (nono) that protects the host; no package code is executed. Version 3 also flags URL dependencies and a version that adds install scripts, which Eslabon does not check. Like Eslabon, it scans one archive per PyPI version (checked 2026-10-12) | Output is JSON or SARIF (SARIF only for `verify`). ATT&CK tactics per finding, no technique IDs; T1195 is added by Datadog Cloud SIEM rules, its only official SIEM integration |
+| OSV-Scanner (Google) | Matches lockfiles against known advisories, including OSV `MAL-*` records, transitive dependencies included | Sees only what has already been reported |
+| Packj (AGPL-3.0) | Static and metadata analysis by default; an optional dynamic mode (strace) (checked 2026-10-12) | Its dynamic mode executes the package it analyses |
+| malcontent (Chainguard, Apache-2.0) | YARA (14,500+ rules) and a diff between two versions of a package (checked 2026-10-12) | No ATT&CK or SIEM output |
 | Socket (SaaS) | Commercial, 70+ risk types | Closed source; SIEM integration only on paid tiers |
 | deps.dev (Google) | Metadata API | Enrichment, not detection |
 
+Install-time firewalls (Socket Firewall Free, Aikido Safe Chain, Datadog Supply-Chain
+Firewall, Veracode Package Firewall, JFrog Curation, Sonatype Repository Firewall) block
+known malware before or during download; Eslabon does not block, it detects and alerts
+after download. OSV-Scanner applies the same OSV `MAL-*` data as ESL-006, but to a whole
+lockfile including transitive dependencies; for a full dependency tree, use it.
+
 **Eslabon does not out-detect GuardDog, and the README says so.** Its contribution is the
-detection turned into a triageable SIEM alert: ECS-shaped, ATT&CK-mapped, evidence included,
-mitigation included, and validated end to end on a free SIEM.
+detection turned into a triageable SIEM alert: ECS-shaped, mapped to ATT&CK techniques,
+evidence included, mitigation and residual gap included, and validated end to end on a free
+SIEM. None of the tools above emits that into Wazuh.
 
 No GuardDog rule is copied. If one is ever adapted, Apache-2.0 §4 applies: keep its header,
 mark the changes, and carry its NOTICE into `NOTICE`.
 
-Sources: <https://securitylabs.datadoghq.com/articles/guarddog-3-0-release/>,
-<https://github.com/DataDog/guarddog>, <https://github.com/google/osv-scanner>,
-<https://github.com/ossillate-inc/packj>, <https://socket.dev/pricing>,
-<https://docs.deps.dev/api/v3/>.
+Sources (checked 2026-10-12):
+- GuardDog: <https://securitylabs.datadoghq.com/articles/guarddog-3-0-release/>,
+  <https://github.com/DataDog/guarddog/tree/v3> (README, `guarddog/analyzer/risk_engine.py`,
+  `guarddog/analyzer/metadata/npm/`), <https://pypi.org/project/guarddog/> (release dates),
+  <https://docs.datadoghq.com/security/default_rules/def-000-yb1/> (Datadog Cloud SIEM, T1195).
+- OSV-Scanner: <https://github.com/google/osv-scanner>,
+  <https://google.github.io/osv-scanner/supported-languages-and-lockfiles/>.
+- Packj: <https://github.com/ossillate-inc/packj>.
+- malcontent: <https://github.com/chainguard-dev/malcontent>.
+- Socket: <https://socket.dev/pricing>, <https://docs.socket.dev/docs/socket-firewall-free>.
+- Firewalls: <https://github.com/AikidoSec/safe-chain>,
+  <https://github.com/DataDog/supply-chain-firewall>, <https://docs.socket.dev/>,
+  <https://www.veracode.com/>, <https://docs.jfrog.com/>, <https://www.sonatype.com/>.
+- deps.dev: <https://docs.deps.dev/api/v3/>.
 
 ## 3. Scope
 
@@ -65,7 +84,8 @@ Sources: <https://securitylabs.datadoghq.com/articles/guarddog-3-0-release/>,
 **Out (roadmap)**: listed in order of priority.
 1. Measuring detection against real samples (DataDog's malicious-packages dataset), only
    inside Kali, with a snapshot before and a restore after.
-2. `.pth` files that `import` at interpreter startup.
+2. Code that runs on import or at interpreter startup: a wheel's module-level
+   `__init__.py`, the `import` lines of `.pth` files and Python 3.15 `.start` files.
 3. Archive anomalies beyond v0.1: case-only name collisions, zip local/central name
    comparison, tar trailing data.
 4. Dependency files (`requirements.txt`, `package-lock.json`).
@@ -105,7 +125,9 @@ catalog.toml: the single source of truth for every rule
 - **PyPI:** reads `https://pypi.org/pypi/<name>/<version>/json` and prefers the sdist,
   because `setup.py` lives there. Without an sdist it takes the `py3-none-any` wheel, then
   the first `cp313` manylinux x86_64 wheel, then the first wheel listed. It verifies
-  `digests.sha256`.
+  `digests.sha256`. pip itself installs a compatible wheel before an sdist, so when both
+  exist the artifact scanned is not the one pip would install; to judge that wheel, scan it
+  as a local file.
 - **npm:** reads `https://registry.npmjs.org/<name>/<version>`, with the `/` of a scoped
   name encoded as `%2f`, and verifies `dist.integrity` (sha512). Old versions that publish
   only a sha1 `shasum` are accepted, verified against it, and recorded as the anomaly
@@ -161,7 +183,10 @@ Both are committed with their date and URL.
   (`"postinstall": "node index.js"`), which is the most common shape of npm malware. The
   legitimate version of that exact shape (esbuild, sharp, puppeteer) downloads binaries with
   `child_process` and `https`, so a network-plus-exec rule on that file would not tell them
-  apart. That file is still covered by ESL-003 and ESL-004, which run on every file.
+  apart. In that file, as in every file, only ESL-003 (a decoder adjacent to an evaluator)
+  and ESL-004 (a credential source and a known exfiltration sink in the same file) apply;
+  downloading and running code there is not flagged. The same holds for a shell script that
+  an install script runs (`"postinstall": "sh setup.sh"`).
   For the same reason `node -e "require('./x')"` (core-js, es5-ext) is not flagged. Also
   not matched: `npx <pkg>` (`npx only-allow pnpm` is a common benign preinstall), inline
   code of other interpreters (`python -c`, `perl -e`, `bun -e`, `deno eval`), `sh -c`
@@ -173,6 +198,15 @@ Both are committed with their date and URL.
   same script (`node install.js && echo -e done`); each attempt to parse the shell
   instead (separators, quotes, CR, cmd.exe carets, bash `$'...'`) opened a way to hide
   a real `node -e`.
+- `binding.gyp` command expansions (`<!(...)`), which node-gyp runs at install when a
+  package has no install script, are not judged. The Miasma campaign (June 2026) used this
+  to run a package's own `index.js` with no install script at all
+  (<https://snyk.io/blog/node-gyp-supply-chain-compromise-self-propagating-npm-worm-binding-gyp/>,
+  checked 2026-10-12).
+- ESL-001 reads only an sdist's `setup.py`. Code that runs when a wheel is imported
+  (module-level `__init__.py`), the `import` lines of `.pth` files and Python 3.15 `.start`
+  files (<https://peps.python.org/pep-0829/>, checked 2026-10-12) are read by ESL-003 and
+  ESL-004 only, like any other file.
 - ESL-004 misses exfiltration to an ordinary domain.
 - ESL-003 misses multi-stage decoding split across lines.
 - ESL-005 misses typosquats of packages outside the top 1,000.
@@ -292,7 +326,8 @@ re-versioned known-bad artifact is left to the content rules (see docs/event-sch
   committed; `integrations/wazuh/README.md` lists the rule each one must reach.
 - A test asserts that the levels and `<mitre>` IDs in the XML match `catalog.toml`.
 
-**Wazuh's ATT&CK database is v13.1** (since 4.8), so the dashboard shows older names, e.g.
+**Wazuh's ATT&CK database is v13.1** (since 4.8,
+<https://wazuh.com/blog/introducing-wazuh-4-8-0/>, checked 2026-10-12), so the dashboard shows older names, e.g.
 *Defense Evasion* for TA0005. Events carry v19.2 names. Each `<mitre>` ID is checked in
 `wazuh-logtest` for "not found" warnings. If a sub-technique is missing from Wazuh's
 database, its parent is used in the XML and the README says so.

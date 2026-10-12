@@ -55,8 +55,8 @@ name = "pypi-install-exec"
 severity = 8
 wazuh_level = 11
 techniques = ["T1546.016", "T1059.006"]
-action = "Prefer wheels (no setup.py runs); build sdists only after review, in a sandboxed build (container or VM) with egress blocked."
-residual_gap = "Does not flag setup.py that fetches or runs code via indirect means (e.g. a helper module); only direct network or download-tool use is seen."
+action = "Prefer wheels (no setup.py runs) and scan the exact wheel you will install; a registry scan of the sdist does not cover it. Build sdists only after review, in a sandboxed build (container or VM) with egress blocked."
+residual_gap = "Does not flag setup.py that fetches or runs code via indirect means (e.g. a helper module). A registry scan reads the sdist, not the wheel pip installs first, and a wheel's import-time code is not judged."
 detect = "Process and network telemetry from pip/python during install (child curl, wget, powershell, outbound connections)."
 
 [[rules]]
@@ -65,8 +65,8 @@ name = "npm-install-script-exec"
 severity = 8
 wazuh_level = 11
 techniques = ["T1546.016", "T1059.007"]
-action = "Install with --ignore-scripts by default and allow-list the few packages that need lifecycle scripts."
-residual_gap = "Does not judge the JS file an install script runs (postinstall: node index.js), the commonest shape of npm malware; ESL-003/004 cover that file."
+action = "Keep dependency install scripts off (default in npm 12, pnpm 10+, Yarn 4.14+; --ignore-scripts on older npm; Bun runs only a trusted list) and re-review a package before approving a new version's scripts."
+residual_gap = "Does not judge the file an install script runs (node index.js, sh setup.sh) or binding.gyp. There only a decoder next to an evaluator and a credential path with a known exfiltration sink are checked; download-and-run is not."
 detect = "Child processes of node/npm during install (sh, curl, powershell) and their outbound connections."
 
 [[rules]]
