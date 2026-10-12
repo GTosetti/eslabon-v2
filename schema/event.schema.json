@@ -121,7 +121,7 @@
       }
     }
   },
-  "$comment": "No top-level file: Wazuh 4.14 maps data.file as keyword (R54).",
+  "$comment": "No top-level file: Wazuh 4.14 maps data.file as keyword.",
   "not": {"required": ["file"]},
   "allOf": [
     {

@@ -17,7 +17,7 @@ legitimate corpus only).
 Procedure:
 
 1. **Snapshot Kali, cold.** Shut the VM down first: on the lab host a live snapshot never
-   converged under Hyper-V ([`evidence/e7/README.md`](evidence/e7/README.md),
+   converged under Hyper-V ([`evidence/lab/README.md`](evidence/lab/README.md),
    "Incidents").
 2. **Clone the dataset inside Kali**, never on the host.
 3. **Decrypt inside Kali**, into a directory that is not shared with the host, and run
@@ -49,15 +49,13 @@ From design §3 and §8:
   `BadZipFile` case v0.1 already records;
 - tar trailing data.
 
-Routed here by the Task 4 review (tar reading):
+Routed here by the review of the tar reader:
 - data hidden in tar member padding, or skipped through a pax `size` override;
 - GNU sparse extension blocks (a sparse member is recorded and the scan is
   `incomplete`, but its content is not reconstructed);
 - the tar reader relies on `tarfile` internals, which are only partly guarded by tests.
 
-Routed here by the false-positive measurement ([`measurements.md`](measurements.md),
-ruling R50):
-- when a PyPI sdist hits a cap, fall back to the wheel;
+Routed here by the false-positive measurement ([`measurements.md`](measurements.md)):
 - skip an oversize member, record an anomaly and continue, instead of aborting the rest
   of the archive. Today a cap stops the scan and the summary is `limits_exceeded`, which
   must be triaged as an unscanned remainder, never as clean.
@@ -83,7 +81,7 @@ The residual gaps of each v0.1 rule, in the order the README states them. Origin
 design §5 (residual gaps), the catalog's `residual_gap` text, and the reviews of v0.1.
 
 **ESL-001** (`pypi-install-exec`)
-1. **In-tree PEP 517 build backends** (ruling R59, found in the Task 19b review). An
+1. **In-tree PEP 517 build backends** (found in a v0.1 review). An
    sdist with no `setup.py` whose `pyproject.toml` sets `backend-path = ["."]` and a
    `build-backend` shipped in the archive has that module run by pip at build time, like
    `setup.py`. A network call in it gives 0 findings and exit 0 today. The extension:
@@ -92,7 +90,7 @@ design §5 (residual gaps), the catalog's `residual_gap` text, and the reviews o
    `residual_gap`).
 3. A download command assembled indirectly, for example through string formatting or a
    `shutil.which` lookup, rather than written next to the `subprocess`/`os.system` call
-   (Task 10 review).
+   (v0.1 review).
 
 **ESL-002** (`npm-install-script-exec`), all from design §5:
 1. The JavaScript file an install script runs (`"postinstall": "node index.js"`), the most
@@ -112,24 +110,24 @@ design §5 (residual gaps), the catalog's `residual_gap` text, and the reviews o
 **ESL-003** (`encoded-exec`)
 1. Multi-stage decoding split across lines, so decoder and evaluator are not adjacent
    (design §5).
-2. A gap of more than 50 characters between evaluator and decoder (Task 9 review).
+2. A gap of more than 50 characters between evaluator and decoder (v0.1 review).
 3. JavaScript evaluators other than a direct `eval` or `Function` call: the `vm` module's
    run functions, a timer given a decoded string, an indirect or bracket-notation `eval`
-   (Task 9 review).
-4. Python evaluators reached through aliases, `getattr` or the `builtins` module (Task 9
+   (v0.1 review).
+4. Python evaluators reached through aliases, `getattr` or the `builtins` module (v0.1
    review).
 
 **ESL-004** (`secret-exfil`)
 1. Exfiltration to an ordinary domain: only known sinks and public IP literals count
    (design §5).
 2. Environment exfiltration that iterates over the variables instead of serialising the
-   whole environment (ruling R40).
+   whole environment.
 
 **ESL-005** (`typosquat`)
 1. Typosquats of packages outside the top 1,000 (design §5). On npm this misses historical
    squats of `jquery`, `cross-env` and `mongoose` ([`measurements.md`](measurements.md)).
    Raising the npm cutoff to 2,000 was measured at +6 false positives per 1,000 names for
-   +2 historical hits, and was not taken (ruling R44).
+   +2 historical hits, and was not taken.
 2. A weak signal alone: pair it with ESL-001..004 (catalog `residual_gap`).
 
 **ESL-006** (`known-malicious`)
@@ -140,7 +138,7 @@ design §5 (residual gaps), the catalog's `residual_gap` text, and the reviews o
 **Wazuh's ATT&CK view**
 - Wazuh's bundled ATT&CK database is older than the v19.2 the events carry: the alert
   shows *Defense Evasion* where the event says *Stealth*, and T1027.013 is missing, so
-  rule 100303 uses T1027 ([`evidence/e7/README.md`](evidence/e7/README.md),
+  rule 100303 uses T1027 ([`evidence/lab/README.md`](evidence/lab/README.md),
   [`integrations/wazuh/README.md`](../integrations/wazuh/README.md)). To do: re-check
   every `<mitre>` ID with `wazuh-logtest` whenever Wazuh updates its database, and drop
   the override when T1027.013 appears.

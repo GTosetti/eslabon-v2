@@ -343,12 +343,12 @@ def test_local_metadata_read_or_no_metadata_anomaly(dirs):
     target = _put(
         dirs, "anon.tgz", make_tar([TarItem("package/index.js", b"x")])
     )
-    # no name: OSV fails closed (R46)
+    # no name: OSV fails closed
     assert _run(target, dirs[1], "--ecosystem", "npm") == 2
     s = _summary(_events(dirs[1]))
     assert s["package"] == {"name": "unknown", "version": ""}
     assert "no_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
-    # R47: no name at all is "incomplete", which outranks osv_unavailable
+    # no name at all is "incomplete", which outranks osv_unavailable
     assert s["eslabon"]["scan"]["status"] == "incomplete"
     assert s["eslabon"]["scan"]["osv_status"] == "unavailable"
 
@@ -380,7 +380,7 @@ def test_metadata_from_wheel_metadata(dirs):
 
 
 def test_legacy_zip_sdist_reads_pkg_info(dirs):
-    # R62 #1: the kind comes from the suffix (.zip = sdist), not the container
+    # the kind comes from the suffix (.zip = sdist), not the container
     pkg_info = b"Metadata-Version: 2.1\nName: pkg\nVersion: 1.0\n\n"
     data = make_zip(
         [ZipItem("pkg-1.0/PKG-INFO", pkg_info), ZipItem("pkg-1.0/setup.py", b"")]
@@ -435,7 +435,7 @@ def test_malformed_npm_metadata_is_no_metadata(dirs, body):
     target = _put(
         dirs, "m.tgz", make_tar([TarItem("package/package.json", body)])
     )
-    # no name: OSV fails closed (R46)
+    # no name: OSV fails closed
     assert _run(target, dirs[1], "--ecosystem", "npm") == 2
     s = _summary(_events(dirs[1]))
     assert "no_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
@@ -470,7 +470,7 @@ def test_npm_metadata_too_deep_is_incomplete(dirs):
     s = _summary(_events(dirs[1]))
     sc = s["eslabon"]["scan"]
     assert sc["status"] == "incomplete"
-    # the name in it was unreadable too, so ESL-005/006 had none (R47)
+    # the name in it was unreadable too, so ESL-005/006 had none
     assert sc["anomaly_kinds"] == ["no_identity", "package_json_too_deep"]
     assert sc["anomalies"] == 2  # too_deep recorded once, not by both readers
     assert "package_json_too_deep" in scan.INCOMPLETE_KINDS
@@ -513,7 +513,7 @@ def test_analyze_archive_runs_in_worker_and_returns_metadata(dirs):
     assert result.files_scanned == 2
 
 
-# ------------------------------------------------------------- fix round 1 ----
+# ------------------------------------------- duplicate and rewritten paths ----
 
 
 def _flag_evil(member, ctx):
@@ -530,7 +530,7 @@ def _finding_snippets(events):
     ]
 
 
-def test_r25_tar_traversal_copy_not_hidden_by_later_benign_copy(dirs, monkeypatch):
+def test_tar_traversal_copy_not_hidden_by_later_benign_copy(dirs, monkeypatch):
     # pip writes "top/x/../setup.py" to top/setup.py; the lossy normalised path
     # "top/x/setup.py" must not let the benign second member hide it.
     _in_process(monkeypatch)
@@ -548,7 +548,7 @@ def test_r25_tar_traversal_copy_not_hidden_by_later_benign_copy(dirs, monkeypatc
     assert _summary(events)["eslabon"]["scan"]["status"] == "ok"
 
 
-def test_r25_wheel_backslash_traversal_copy_is_kept(dirs, monkeypatch):
+def test_wheel_backslash_traversal_copy_is_kept(dirs, monkeypatch):
     _in_process(monkeypatch)
     monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
     data = make_zip(
@@ -595,7 +595,7 @@ BS = chr(0x5C)  # backslash: a literal filename character on POSIX installers
     ],
     ids=["sdist", "npm", "nested"],
 )
-def test_r27_backslash_copy_does_not_hide_finding(dirs, monkeypatch, eco, items):
+def test_backslash_copy_does_not_hide_finding(dirs, monkeypatch, eco, items):
     # On POSIX "\" is a literal character: both files get installed.
     _in_process(monkeypatch)
     monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
@@ -614,7 +614,7 @@ def _orig_names(data: bytes) -> list[str]:
         return [i.orig_filename for i in zf.infolist()]
 
 
-def test_r28_zip_true_backslash_copy_does_not_hide_finding(dirs, monkeypatch):
+def test_zip_true_backslash_copy_does_not_hide_finding(dirs, monkeypatch):
     # On a Windows host zipfile rewrites "\" to "/" in .filename; the scanner
     # must decide on the stored name (orig_filename), whatever its host OS.
     _in_process(monkeypatch)
@@ -635,7 +635,7 @@ def test_r28_zip_true_backslash_copy_does_not_hide_finding(dirs, monkeypatch):
     assert _summary(events)["eslabon"]["scan"]["status"] == "ok"
 
 
-def test_r28_zip_nul_in_name_is_treated_as_rewritten(dirs, monkeypatch):
+def test_zip_nul_in_name_is_treated_as_rewritten(dirs, monkeypatch):
     # zipfile truncates .filename at NUL, so "w/a.py\0" would look like "w/a.py".
     _in_process(monkeypatch)
     monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
@@ -649,7 +649,7 @@ def test_r28_zip_nul_in_name_is_treated_as_rewritten(dirs, monkeypatch):
     assert _finding_snippets(_events(dirs[1])) == ["EVIL payload"]
 
 
-def test_r28_zip_backslash_dist_info_metadata_is_ambiguous(dirs):
+def test_zip_backslash_dist_info_metadata_is_ambiguous(dirs):
     data = make_zip(
         [
             ZipItem("w-1.0.dist-info/METADATA", b"Name: w\nVersion: 1.0\n"),
@@ -668,7 +668,7 @@ def test_r28_zip_backslash_dist_info_metadata_is_ambiguous(dirs):
     assert s["eslabon"]["scan"]["status"] == "ok"
 
 
-def test_r27_backslash_metadata_candidate_is_ambiguous(dirs):
+def test_backslash_metadata_candidate_is_ambiguous(dirs):
     data = make_tar(
         [
             TarItem("pkg-1.0/PKG-INFO", b"Name: pkg\nVersion: 1.0\n"),
@@ -682,7 +682,7 @@ def test_r27_backslash_metadata_candidate_is_ambiguous(dirs):
     assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
 
 
-def test_r27_traversal_metadata_candidate_is_ambiguous(dirs):
+def test_traversal_metadata_candidate_is_ambiguous(dirs):
     data = make_zip(
         [
             ZipItem("pkg-1.dist-info/METADATA", b"Name: pkg\nVersion: 1\n"),
@@ -696,7 +696,7 @@ def test_r27_traversal_metadata_candidate_is_ambiguous(dirs):
     assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
 
 
-def test_r29_identical_paths_report_every_copy(dirs, monkeypatch):
+def test_identical_paths_report_every_copy(dirs, monkeypatch):
     _in_process(monkeypatch)
     monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
     data = make_zip(
@@ -710,7 +710,7 @@ def test_r29_identical_paths_report_every_copy(dirs, monkeypatch):
     assert _finding_snippets(_events(dirs[1])) == ["EVIL first", "EVIL last"]
 
 
-def test_r29_evil_then_benign_same_name_keeps_finding(dirs, monkeypatch):
+def test_evil_then_benign_same_name_keeps_finding(dirs, monkeypatch):
     _in_process(monkeypatch)
     monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
     data = make_zip([ZipItem("w/a.py", b"EVIL first"), ZipItem("w/a.py", b"benign")])
@@ -721,7 +721,7 @@ def test_r29_evil_then_benign_same_name_keeps_finding(dirs, monkeypatch):
     assert "duplicate_name" in _summary(events)["eslabon"]["scan"]["anomaly_kinds"]
 
 
-def test_r29_dir_with_data_after_evil_file_keeps_finding(dirs, monkeypatch):
+def test_dir_with_data_after_evil_file_keeps_finding(dirs, monkeypatch):
     # probe5: "w/a.py/" with data shares the normalised path of the EVIL w/a.py,
     # but pip installs w/a.py = EVIL. Every copy is reported.
     _in_process(monkeypatch)
@@ -742,7 +742,7 @@ def _wheel_meta(name: str) -> bytes:
     return f"Metadata-Version: 2.1\nName: {name}\nVersion: 1\n\n".encode()
 
 
-def test_r26_wheel_second_dist_info_metadata_is_ambiguous(dirs):
+def test_wheel_second_dist_info_metadata_is_ambiguous(dirs):
     data = make_zip(
         [
             ZipItem("requestz-1.dist-info/METADATA", _wheel_meta("requestz")),
@@ -757,7 +757,7 @@ def test_r26_wheel_second_dist_info_metadata_is_ambiguous(dirs):
     assert "ambiguous_metadata" in kinds and "no_metadata" not in kinds
 
 
-def test_r26_wheel_conflicting_dist_info_dirs_are_ambiguous(dirs):
+def test_wheel_conflicting_dist_info_dirs_are_ambiguous(dirs):
     data = make_zip(
         [
             ZipItem("requestz-1.dist-info/METADATA", _wheel_meta("requestz")),
@@ -771,7 +771,7 @@ def test_r26_wheel_conflicting_dist_info_dirs_are_ambiguous(dirs):
     assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
 
 
-def test_r26_wheel_ignores_pkg_info(dirs):
+def test_wheel_ignores_pkg_info(dirs):
     data = make_zip(
         [
             ZipItem("requestz-1.dist-info/METADATA", _wheel_meta("requestz")),
@@ -785,7 +785,7 @@ def test_r26_wheel_ignores_pkg_info(dirs):
     assert "ambiguous_metadata" not in s["eslabon"]["scan"]["anomaly_kinds"]
 
 
-def test_r26_sdist_ignores_dist_info_metadata(dirs):
+def test_sdist_ignores_dist_info_metadata(dirs):
     data = make_tar(
         [
             TarItem("real-1/PKG-INFO", _wheel_meta("real")),
@@ -797,7 +797,7 @@ def test_r26_sdist_ignores_dist_info_metadata(dirs):
     assert _summary(_events(dirs[1]))["package"]["name"] == "real"
 
 
-def test_r26_sdist_two_pkg_info_is_ambiguous(dirs):
+def test_sdist_two_pkg_info_is_ambiguous(dirs):
     data = make_tar(
         [
             TarItem("real-1/PKG-INFO", _wheel_meta("real")),
@@ -811,17 +811,17 @@ def test_r26_sdist_two_pkg_info_is_ambiguous(dirs):
     assert "ambiguous_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
 
 
-def test_r26_npm_bare_package_json_is_ignored(dirs):
+def test_npm_bare_package_json_is_ignored(dirs):
     data = make_tar([TarItem("package.json", PKG_JSON)])  # strip:1 drops it
     target = _put(dirs, "bare.tgz", data)
-    # no name: OSV fails closed (R46)
+    # no name: OSV fails closed
     assert _run(target, dirs[1], "--ecosystem", "npm") == 2
     s = _summary(_events(dirs[1]))
     assert s["package"]["name"] == "unknown"
     assert "no_metadata" in s["eslabon"]["scan"]["anomaly_kinds"]
 
 
-def test_r26_npm_two_package_json_is_ambiguous(dirs):
+def test_npm_two_package_json_is_ambiguous(dirs):
     other = b'{"name": "totally-benign", "version": "9"}'
     data = make_tar(
         [
@@ -830,7 +830,7 @@ def test_r26_npm_two_package_json_is_ambiguous(dirs):
         ]
     )
     target = _put(dirs, "two.tgz", data)
-    # no name: OSV fails closed (R46)
+    # no name: OSV fails closed
     assert _run(target, dirs[1], "--ecosystem", "npm") == 2
     s = _summary(_events(dirs[1]))
     assert s["package"]["name"] == "unknown"
@@ -912,7 +912,7 @@ def test_fifo_in_sdist_is_not_incomplete(dirs):
     assert "special_member" in sc["anomaly_kinds"]
 
 
-def test_r28_zip_nul_slash_dir_with_content_keeps_finding(dirs, monkeypatch):
+def test_zip_nul_slash_dir_with_content_keeps_finding(dirs, monkeypatch):
     # "w/x.py\0/" looks like a dir as stored, but pip installs w/x.py = EVIL.
     _in_process(monkeypatch)
     monkeypatch.setattr(scan, "ANALYZERS", [_flag_evil])
@@ -1054,7 +1054,7 @@ def test_esl005_scoped_npm_pack_name_is_no_mismatch(dirs, monkeypatch, filename)
 def test_esl005_no_name_at_all_has_no_identity_source(dirs, monkeypatch):
     _install_top(monkeypatch, [], ["react"])
     target = _put(dirs, "anon.tgz", make_tar([TarItem("package/index.js", b"x")]))
-    # no name: OSV fails closed (R46)
+    # no name: OSV fails closed
     assert _run(target, dirs[1], "--ecosystem", "npm") == 2
     s = _summary(_events(dirs[1]))
     assert "identity_source" not in s["eslabon"]
@@ -1098,10 +1098,10 @@ def test_esl005_npm_rebuild_suffix_is_no_mismatch(dirs, monkeypatch):
     assert "identity_mismatch" not in sc["anomaly_kinds"]
 
 
-# ------------------------------------------------------- R47 identity ----
+# --------------------------------------------------- package identity ----
 
 
-def test_r47_nameless_offline_is_incomplete_exit_2(dirs):
+def test_nameless_offline_is_incomplete_exit_2(dirs):
     # ESL-005/006 could not run on a nameless archive: never a clean exit 0
     target = _put(dirs, "anon.tgz", make_tar([TarItem("package/index.js", b"x")]))
     assert _run(target, dirs[1], "--ecosystem", "npm", "--offline") == 2
@@ -1112,7 +1112,7 @@ def test_r47_nameless_offline_is_incomplete_exit_2(dirs):
     assert "no_identity" in scan.INCOMPLETE_KINDS
 
 
-def test_r47_nameless_online_incomplete_and_osv_unavailable(dirs):
+def test_nameless_online_incomplete_and_osv_unavailable(dirs):
     target = _put(dirs, "anon.tgz", make_tar([TarItem("package/index.js", b"x")]))
     assert _run(target, dirs[1], "--ecosystem", "npm") == 2
     sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
@@ -1121,14 +1121,14 @@ def test_r47_nameless_online_incomplete_and_osv_unavailable(dirs):
     assert "no_identity" in sc["anomaly_kinds"]
 
 
-def test_r47_named_archive_has_no_no_identity(dirs):
+def test_named_archive_has_no_no_identity(dirs):
     target = _put(dirs, "left-pad-1.3.0.tgz", CLEAN_TGZ)
     assert _run(target, dirs[1], "--ecosystem", "npm", "--offline") == 0
     sc = _summary(_events(dirs[1]))["eslabon"]["scan"]
     assert "no_identity" not in sc["anomaly_kinds"]
 
 
-def test_r47_same_name_different_versions_queries_osv_with_both(dirs, monkeypatch):
+def test_same_name_different_versions_queries_osv_with_both(dirs, monkeypatch):
     from eslabon import osv
 
     queries = []

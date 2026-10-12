@@ -77,7 +77,7 @@ def test_finding_without_hash_omits_archive():
 
 @pytest.mark.parametrize("sha", ["ab" * 32, ""])
 def test_no_event_has_top_level_file_key(sha):
-    # R54: Wazuh 4.14's wazuh-alerts template maps data.file as keyword, so an
+    # Wazuh 4.14's wazuh-alerts template maps data.file as keyword, so an
     # object under "file" makes OpenSearch reject the whole alert.
     pkg = PackageRef("a", "1", "pypi", sha)
     r = ScanResult("ok", [_finding()], [Anomaly("traversal", "00", "d")])
@@ -92,7 +92,7 @@ def test_no_event_has_top_level_file_key(sha):
 
 
 def test_max_line_bytes_fits_wazuh_logcollector():
-    # R54: logcollector delivers at most 65,278 bytes plus newline
+    # logcollector delivers at most 65,278 bytes plus newline
     assert MAX_LINE_BYTES == 65_000
 
 
@@ -307,7 +307,7 @@ def test_worst_case_non_bmp_expansion(tmp_path):
 
 # Elasticsearch rejects a keyword value longer than 32,766 UTF-8 bytes
 # (max_bytes_length_exceeded); the wazuh-alerts template maps strings as keyword
-# with no ignore_above, so one such field drops the whole alert (E7 experiment D).
+# with no ignore_above, so one such field drops the whole alert (lab experiment D).
 ES_KEYWORD_MAX_BYTES = 32_766
 ALL_ANOMALY_KINDS = [
     "traversal", "absolute_path", "link_skipped", "zip_symlink", "duplicate_name",

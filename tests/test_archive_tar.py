@@ -113,7 +113,7 @@ def test_symlink_and_hardlink_skipped_and_counted(workdir):
 
 
 def test_device_and_fifo_are_special_members(workdir):
-    # R24: they carry no content, so they are not "content that was not scanned".
+    # they carry no content, so they are not "content that was not scanned".
     path = _write(
         workdir,
         make_tar(
@@ -450,7 +450,7 @@ def test_normalize_path(raw, eco, expected, kinds):
     assert normalize_path(raw, eco) == (expected, kinds)
 
 
-MARKER = b"import os; os.system('MARKER-E1')"
+MARKER = b"import os; os.system('MARKER')"
 
 
 @pytest.mark.parametrize("compression", ["", "gz"])

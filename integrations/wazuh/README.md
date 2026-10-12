@@ -30,12 +30,12 @@ Wazuh emits **one alert per event**, so each event reaches exactly one leaf:
 | `100311` | 7 | scan summary, any other status (`negate="yes"`) | |
 
 **`100311` needs the status field to exist.** Its `negate="yes"` on
-`eslabon.scan.status` does **not** match when the field is absent. Measured in E7 with
+`eslabon.scan.status` does **not** match when the field is absent. Measured in the lab with
 a throwaway probe rule, 100395, that used the same negated field
 (`<field name="eslabon.scan.status" type="pcre2" negate="yes">^ok$</field>`) under its
-own parent conditions (`event.module` = `e7probe`, no `if_sid`): a line with no
+own parent conditions (a throwaway `event.module` value, no `if_sid`): a line with no
 `eslabon.scan.status` reached no rule, while the control with `incomplete` reached
-100395 (`docs/evidence/e7/probes.txt`, `docs/evidence/e7/scripts/e7_probe_rules.xml`). So a summary without a status would
+100395 (`docs/evidence/lab/probes.txt`, `docs/evidence/lab/scripts/probe_rules.xml`). So a summary without a status would
 raise no alert at all. The rule relies on the event schema, which **requires**
 `eslabon.scan.status` in every summary (`schema/event.schema.json`); `summary_event`
 in `src/eslabon/emit.py` always writes it.
@@ -48,11 +48,11 @@ Wazuh's database lacks an ID (see "ATT&CK version").
 **Groups.** Every rule gets `eslabon_v2` from the file-level `<group name="eslabon_v2,">`
 only; the per-rule `<group>` adds just `supply_chain`, `sigma` or `scan_summary`.
 Repeating `eslabon_v2` inside a rule made the alert's `rule.groups`
-`['eslabon_v2', 'eslabon_v2', 'supply_chain']` in E7.
+`['eslabon_v2', 'eslabon_v2', 'supply_chain']` in the lab run.
 
 **`rule.id` and `rule.name` in the XML are our JSON fields.** In the alert they are
 stored under `data.rule.*`, next to Wazuh's own `rule.id` (`1003xx`). This is the
-first thing to confirm in E7.
+first thing to confirm in the lab.
 
 **Matching semantics.** `<location>` is OS_Match: a literal, case-insensitive
 compare where only a leading `^` and a trailing `$` are special and a backslash is
@@ -98,8 +98,8 @@ sudo /var/ossec/bin/agent_control -l             # only 000 should be left
 ```
 
 A running agent enrols again by itself and gets the same ID back, so a removal done
-while it runs is undone. Measured in E7: `manage_agents -r
-001` had to be repeated (`authd: Agent key generated for 'kali-e7'`).
+while it runs is undone. Measured in the lab: `manage_agents -r
+001` had to be repeated (`authd` generated a new key for the still-running agent).
 
 ## Test with wazuh-logtest
 
@@ -145,12 +145,12 @@ e.g. *Defense Evasion* for TA0005 (the events carry v19.2's *Stealth*). Each `<m
 ID must be checked in `wazuh-logtest` for "not found" warnings. If a sub-technique is
 missing from Wazuh's database, its parent is used in the XML and this README says so.
 
-Substitutions, measured in E7: **`T1027.013` -> `T1027` for rule `100303`** (logtest:
+Substitutions, measured in the lab: **`T1027.013` -> `T1027` for rule `100303`** (logtest:
 `WARNING: Mitre Technique ID 'T1027.013' not found in database.`). It is recorded as
 `wazuh_mitre = ["T1027", "T1140"]` for ESL-003 in `catalog.toml`; the events keep
 `T1027.013` in `threat.technique.id`.
 
-## What to verify in E7 (design section 11)
+## What to verify in the lab (design section 11)
 
 | Check | How |
 |---|---|
@@ -163,6 +163,6 @@ Substitutions, measured in E7: **`T1027.013` -> `T1027` for rule `100303`** (log
 
 Also worth recording: that `negate="yes"` on `<field>` behaves as expected for
 `100311`, and that no built-in json rule claims these events before `100300`. Both were
-checked in E7 (`docs/evidence/e7/README.md`): negate works on a present field and does
+checked in the lab run (`docs/evidence/lab/README.md`): negate works on a present field and does
 not match an absent one (see "Rule tree" above), and rule 1002 was never tried before
 `100300` in the `-v` trace of the ESL-003 sample.

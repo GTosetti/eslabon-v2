@@ -216,7 +216,7 @@ def test_every_rule_in_group_eslabon_v2_and_parent_shape():
 
 
 def test_no_rule_repeats_eslabon_v2_in_its_own_group():
-    # R54: the enclosing group already tags every rule; repeating it inside a
+    # the enclosing group already tags every rule; repeating it inside a
     # rule gave rule.groups = ['eslabon_v2', 'eslabon_v2', 'supply_chain']
     model = _model()
     for rid, rule in model.items():

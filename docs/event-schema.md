@@ -10,7 +10,7 @@ Every line of the output file is one JSON object, ASCII only (`ensure_ascii`), L
 no BOM, and always under 65,000 bytes (`MAX_LINE_BYTES`, newline excluded). The limit is
 set by Wazuh 4.14's logcollector, not by JSON: its `read_json` reads each line with
 `fgets` into `OS_MAXSTR - OS_LOG_HEADER` bytes, so at most 65,278 bytes plus the newline
-arrive. Measured in the E7 lab: a 65,300-byte line was dropped silently and the line
+arrive. Measured in the lab: a 65,300-byte line was dropped silently and the line
 after it was lost as well. The emitter raises `ValueError` instead of writing a line at
 or over the limit.
 
@@ -18,7 +18,7 @@ or over the limit.
 
 ECS puts an artifact's hash in `file.hash.sha256`. Eslabon does **not**: the archive
 hash is `eslabon.archive.sha256`, and no event has a top-level `file` key (the schema
-rejects one). Reason, measured in the E7 lab: Wazuh 4.14's `wazuh-alerts` index
+rejects one). Reason, measured in the lab: Wazuh 4.14's `wazuh-alerts` index
 template maps `data.file` as a `keyword`, and a decoded JSON event lands under `data.`,
 so an object at `file` makes OpenSearch reject the **whole** alert (filebeat
 `mapper_parsing_exception` 14 times, 0 alerts indexed). Every other ECS field

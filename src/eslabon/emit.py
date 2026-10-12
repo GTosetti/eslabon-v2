@@ -17,7 +17,7 @@ ECS_VERSION = "9.5.0"
 SCHEMA_VERSION = "1.0"
 ATTACK_VERSION = "19.2"
 # Wazuh 4.14 logcollector (read_json: fgets of OS_MAXSTR - OS_LOG_HEADER) delivers
-# at most 65,278 bytes plus the newline. In the E7 lab a 65,300-byte line was
+# at most 65,278 bytes plus the newline. In the lab a 65,300-byte line was
 # dropped silently and the line after it was lost too, so stay well below that.
 MAX_LINE_BYTES = 65_000
 _PATH_CAP = 512
@@ -54,7 +54,7 @@ def _envelope(
         "scan_id": scan_id,
     }
     # Not ECS file.hash.sha256: Wazuh 4.14's wazuh-alerts template maps data.file
-    # as keyword, so any object under "file" gets the whole alert rejected (R54).
+    # as keyword, so any object under "file" gets the whole alert rejected.
     if pkg.archive_sha256:
         ev["eslabon"]["archive"] = {"sha256": pkg.archive_sha256}
     return ev

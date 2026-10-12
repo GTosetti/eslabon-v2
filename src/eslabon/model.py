@@ -84,7 +84,7 @@ class PackageRef:
 
 @dataclass(frozen=True)
 class ScanContext:
-    rules: yara.Rules | None  # None until the rule set exists (Task 9)
+    rules: yara.Rules | None  # None until the rule set exists
     limits: Limits
     pkg: PackageRef
     # "sdist" | "wheel" | "npm". Required: a silent default would switch off the

@@ -22,7 +22,7 @@
 // token rule (a node word, then an eval flag word anywhere later in the same
 // script string), because node options take values of any shape and number,
 // and a value window in a regex let every 'node' hit chain over the next ones
-// (20 s on 10 MiB of 'node -r '). That rule emulates no shell (R38): it
+// (20 s on 10 MiB of 'node -r '). That rule emulates no shell: it
 // ignores separators and quoting, so it may over-fire when the -e/-p belongs
 // to a later command ('node install.js && echo -e done').
 // PowerShell: a flag that is a prefix of -EncodedCommand (-e, -ec, -en,

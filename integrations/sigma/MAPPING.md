@@ -13,7 +13,7 @@ and the event stops there. A separate rule matching the same ESL-006 finding eve
 would compete with `100306` for them, and one of the two alerts would never be seen.
 The Sigma selection is exactly the condition of `100306` (with its parent), so the
 two are the same rule written in two languages. What is validated end to end in the
-lab (E7) is that translation, `100306`, firing in `wazuh-alerts-*`; the Sigma file
+lab is that translation, `100306`, firing in `wazuh-alerts-*`; the Sigma file
 itself is not run by any engine.
 
 ## Field mapping
@@ -42,7 +42,7 @@ writes these values in a fixed case: `event.module` is the constant `eslabon`,
 
 `rule.id` is **our** decoded field. In the alert it is stored as `data.rule.id`,
 separate from Wazuh's own `rule.id` (`100306`). Confirming that in `wazuh-logtest`
-is a design section 11 check for E7.
+is a design section 11 check for the lab run.
 
 ## Condition
 

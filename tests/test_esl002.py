@@ -182,7 +182,7 @@ def test_key_line_is_the_scripts_install_not_a_later_config_key():
 
 
 def test_scripts_span_computed_once_per_package_json(monkeypatch):
-    # M1: _key_line used to rescan the whole text once per lifecycle key
+    # _key_line used to rescan the whole text once per lifecycle key
     calls = []
     real = npm_scripts._scripts_span
 
@@ -220,7 +220,7 @@ def test_scripts_span_not_computed_without_a_match(monkeypatch):
 
 
 def test_duplicate_scripts_key_line_is_the_last_object():
-    # M2: JSON.parse keeps the LAST top-level "scripts"; the span must too
+    # JSON.parse keeps the LAST top-level "scripts"; the span must too
     data = (
         b'{"scripts":{"install":"a"},"scripts":{' + NL.encode() + b'"install":"'
         + NODE_E.encode() + b' x"}}'
@@ -359,7 +359,7 @@ def test_benign_scripts_silent(script):
         "node.cmd -" + "e 1",
         "echo aWQ= | base64 -d | " + "node",
         "cat x |" + "nodejs.exe",
-        # R38: no shell emulation, so no separator or quoting trick can hide it
+        # no shell emulation, so no separator or quoting trick can hide it
         "node -r a" + CR + "b -" + "e 1",  # sh treats CR as a word character
         "node -r a^&b -" + "e 1",  # cmd.exe caret escape
         "node -r a^|b -" + "e 1",
@@ -414,7 +414,7 @@ def test_node_eval_token_rule_silent(script):
     ],
 )
 def test_node_eval_over_fires_across_commands(script):
-    # R38: the node rule does not emulate any shell, so an eval flag that
+    # the node rule does not emulate any shell, so an eval flag that
     # belongs to a LATER command in the same script still fires. Accepted
     # over-firing: every shell emulation (separators, quotes, CR, cmd.exe
     # carets, bash $'...') opened a new way to hide a real node -e.

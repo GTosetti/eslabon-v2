@@ -378,7 +378,7 @@ def test_sdist_rebuild_suffix_queries_the_metadata_version(tmp_path, monkeypatch
     data = make_tar([TarItem("pyyaml-6.0/PKG-INFO", b"Name: PyYAML\nVersion: 6.0\n\n")])
     code, events, rec = _scan_rec(tmp_path, monkeypatch, data, "pyyaml-6.0-1.tar.gz")
     assert code == 0
-    # same name, two versions: OSV is asked about both (R47), metadata first
+    # same name, two versions: OSV is asked about both, metadata first
     assert [c[1] for c in rec.calls] == [
         {"package": {"name": "PyYAML", "ecosystem": "PyPI"}, "version": "6.0"},
         {"package": {"name": "PyYAML", "ecosystem": "PyPI"}, "version": "6.0-1"},
@@ -393,7 +393,7 @@ def test_nameless_archive_is_osv_unavailable_exit_2(tmp_path, monkeypatch):
     assert code == 2
     assert rec.calls == []
     sc = events[-1]["eslabon"]["scan"]
-    # R47: no name is "incomplete" (no_identity), which outranks osv_unavailable
+    # no name is "incomplete" (no_identity), which outranks osv_unavailable
     assert (sc["status"], sc["osv_status"]) == ("incomplete", "unavailable")
     assert "no_identity" in sc["anomaly_kinds"]
     assert sc["error"] == "no package name from metadata or file name"
@@ -401,7 +401,7 @@ def test_nameless_archive_is_osv_unavailable_exit_2(tmp_path, monkeypatch):
 
 def test_nameless_archive_offline_is_skipped_by_request(tmp_path, monkeypatch):
     """--offline is the user's explicit opt-out (skipped), but a nameless
-    archive is still incomplete: ESL-005 could not run either (R47)."""
+    archive is still incomplete: ESL-005 could not run either."""
     data = make_tar([TarItem("payload/setup.cfg", b"[x]\n")])
     code, events, rec = _scan_rec(
         tmp_path, monkeypatch, data, "payload.tar.gz", "--offline"
@@ -470,7 +470,7 @@ def test_real_opener_sends_user_agent():
 
 
 def test_read_capped_checks_the_deadline(monkeypatch):
-    # R47(c): a server dribbling bytes under the socket timeout cannot hold the
+    # a server dribbling bytes under the socket timeout cannot hold the
     # read past the deadline
     now = [0.0]
     monkeypatch.setattr(osv, "_clock", lambda: now[0])

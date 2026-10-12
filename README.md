@@ -33,7 +33,7 @@ No GuardDog rule was copied. Full comparison: [`docs/design.md` §2](docs/design
 
 | Measurement | Result | Source |
 |---|---|---|
-| Lab run, Kali agent to Wazuh manager, 8 scans of synthetic fixtures | 14 events generated, 14 collected, 14 alerted, **14 indexed** (second pass; the first indexed 0, [see why](#pass-1-every-alert-fired-the-index-held-nothing)) | [`docs/evidence/e7/`](docs/evidence/e7/README.md) |
+| Lab run, Kali agent to Wazuh manager, 8 scans of synthetic fixtures | 14 events generated, 14 collected, 14 alerted, **14 indexed** (second pass; the first indexed 0, [see why](#pass-1-every-alert-fired-the-index-held-nothing)) | [`docs/evidence/lab/`](docs/evidence/lab/README.md) |
 | False positives, top 100 PyPI + top 100 npm | **0** on the 194 fully scanned; 6 stopped at Eslabon's caps, no verdict (4 the 5,000-member cap, 2 the 10 MiB per-file cap) | [`docs/measurements.md`](docs/measurements.md) |
 | Typosquat false positives, ranks 5,001-6,000 | 14 / 1,000 on PyPI, 11 / 1,000 on npm | [`docs/measurements.md`](docs/measurements.md) |
 | ESL-005 name recall on known-malicious typosquat names (OSV MAL) | PyPI 442/455, npm 90/121; historical squats PyPI 6/6, npm 1/8 | [`docs/measurements.md`](docs/measurements.md) |
@@ -66,7 +66,7 @@ A `wazuh-logtest` sample of an ESL-006 finding. A synthetic archive declares the
   "tactic":{"id":["TA0001"],"name":["Initial Access"]}}}
 ```
 
-The manager's verdict, from `wazuh-logtest` ([`esl-006.txt`](docs/evidence/e7/logtest/pass2-7b981f9/esl-006.txt)):
+The manager's verdict, from `wazuh-logtest` ([`esl-006.txt`](docs/evidence/lab/logtest/pass2-7b981f9/esl-006.txt)):
 
 ```
 **Phase 3: Completed filtering (rules).
@@ -98,12 +98,12 @@ flowchart LR
     A --> C
     B --> C
     subgraph W["worker.py: child process, 120 s timeout"]
-        C["archive.py<br/>read in memory<br/>never extracted"] --> E1["YARA<br/>ESL-001..004"]
+        C["archive.py<br/>read in memory<br/>never extracted"] --> Y["YARA<br/>ESL-001..004"]
     end
-    E1 -->|"findings +<br/>package identity"| P["cli.py<br/>parent process"]
-    P --> E2["typosquat.py<br/>ESL-005"]
-    P --> E3["osv.py<br/>ESL-006"]
-    P & E2 & E3 --> F["emit.py<br/>sanitise, cap line<br/>at 65,000 B"]
+    Y -->|"findings +<br/>package identity"| P["cli.py<br/>parent process"]
+    P --> T["typosquat.py<br/>ESL-005"]
+    P --> O["osv.py<br/>ESL-006"]
+    P & T & O --> F["emit.py<br/>sanitise, cap line<br/>at 65,000 B"]
     F --> G[("events.jsonl")]
     G --> H["Wazuh agent<br/>localfile, json"]
     H --> I["Manager<br/>rules 100300-100311"]
@@ -112,7 +112,7 @@ flowchart LR
 
 | Host | Role | Software | Address |
 |---|---|---|---|
-| Kali 2026.2 | Runs the scans; Wazuh agent `kali-e7` | Python 3.13.12, agent 4.14.0-1 | 192.168.56.102 |
+| Kali 2026.2 | Runs the scans; Wazuh agent (ID 001) | Python 3.13.12, agent 4.14.0-1 | 192.168.56.102 |
 | Wazuh OVA | Manager, indexer, dashboard | Wazuh 4.14.0 (OVA, rc2) | 192.168.56.101 |
 | Windows 11 | Hypervisor; runs the test suite and the false-positive corpus | VirtualBox on Hyper-V | n/a |
 
@@ -161,7 +161,7 @@ src/eslabon/
 schema/                         # JSON Schema for every event
 integrations/wazuh/, sigma/     # rules XML, agent snippet, install guide; Sigma rule + mapping
 corpus/legit.toml, scripts/     # pinned 200-package corpus; measurement and sample scripts
-docs/, docs/evidence/e7/        # design, schema, measurements, roadmap; raw lab output
+docs/, docs/evidence/lab/       # design, schema, measurements, roadmap; raw lab output
 tests/                          # pytest suite; fixtures built in memory (builders.py)
 ```
 
@@ -169,7 +169,7 @@ tests/                          # pytest suite; fixtures built in memory (builde
 
 ## Lab validation and what broke
 
-E7 is the project's lab-validation stage, so the evidence lives in `docs/evidence/e7/`; each file name carries the commit the pass ran at (pass 1 `e660c1e`, pass 2 `7b981f9`). Two passes of the same 8 scans: 6 scans with one finding each (one per rule), 1 clean scan and 1 incomplete scan, so 6 findings, 7 summaries with status `ok` and 1 with status `incomplete`. I counted the events at four layers, filtered by `scan_id` ([pass 1](docs/evidence/e7/counts-pass1-e660c1e.txt), [pass 2](docs/evidence/e7/counts-pass2-7b981f9.txt), [environment log](docs/evidence/e7/README.md)).
+The lab evidence lives in `docs/evidence/lab/`; each file name carries the commit the pass ran at (pass 1 `e660c1e`, pass 2 `7b981f9`). Two passes of the same 8 scans: 6 scans with one finding each (one per rule), 1 clean scan and 1 incomplete scan, so 6 findings, 7 summaries with status `ok` and 1 with status `incomplete`. I counted the events at four layers, filtered by `scan_id` ([pass 1](docs/evidence/lab/counts-pass1-e660c1e.txt), [pass 2](docs/evidence/lab/counts-pass2-7b981f9.txt), [environment log](docs/evidence/lab/README.md)).
 
 | Layer | Pass 1 | Pass 2 |
 |---|---|---|
@@ -180,7 +180,7 @@ E7 is the project's lab-validation stage, so the evidence lives in `docs/evidenc
 
 ### Pass 1: every alert fired, the index held nothing
 
-The rules engine alerted on all 14 events. The dashboard showed none. Filebeat logged 14 rejections like this one ([`filebeat-pass1-e660c1e.txt`](docs/evidence/e7/filebeat-pass1-e660c1e.txt)):
+The rules engine alerted on all 14 events. The dashboard showed none. Filebeat logged 14 rejections like this one ([`filebeat-pass1-e660c1e.txt`](docs/evidence/lab/filebeat-pass1-e660c1e.txt)):
 
 ```
 mapper_parsing_exception","reason":"failed to parse field [data.file] of type [keyword] ...
@@ -191,7 +191,7 @@ Wazuh's index template maps `data.file` as a keyword. Eslabon followed ECS and w
 
 ### Long lines vanish, and the error blames the wrong line
 
-To find the real line limit I wrote one large line followed by two small sentinel lines ([`exp_e7.py`](docs/evidence/e7/scripts/exp_e7.py)).
+To find the real line limit I wrote one large line followed by two small sentinel lines ([`experiments.py`](docs/evidence/lab/scripts/experiments.py)).
 
 | Large line | Large line result | Sentinel 1 | Sentinel 2 |
 |---|---|---|---|
@@ -199,7 +199,7 @@ To find the real line limit I wrote one large line followed by two small sentine
 | 65,300 B (allowed by the old 65,536 cap) | dropped silently | delivered | **lost** |
 | 65,000 B (new cap) | delivered and alerted, **not indexed** | delivered | delivered |
 
-The agent's only complaint named a 219-byte line, not the large one ([`kali-state.txt`](docs/evidence/e7/kali-state.txt)):
+The agent's only complaint named a 219-byte line, not the large one ([`kali-state.txt`](docs/evidence/lab/kali-state.txt)):
 
 ```
 2026/10/06 15:28:53 wazuh-logcollector: ERROR: Large message size from file '/var/log/eslabon/events.jsonl' (length = 219): ...
@@ -207,7 +207,7 @@ The agent's only complaint named a 219-byte line, not the large one ([`kali-stat
 
 Measured: 65,000 B arrives, 65,300 B is dropped. The logcollector source puts the limit at 65,278 bytes plus the newline; that figure was read, not measured. The emitter now caps every line at 65,000.
 
-**A second limit, 32,766 bytes per string.** The 65,000-byte line alerted but never reached the index ([`manager-state.txt`](docs/evidence/e7/manager-state.txt)):
+**A second limit, 32,766 bytes per string.** The 65,000-byte line alerted but never reached the index ([`manager-state.txt`](docs/evidence/lab/manager-state.txt)):
 
 ```
 max_bytes_length_exceeded_exception","reason":"bytes can be at most 32766 in length; got 64780"
@@ -250,7 +250,7 @@ After the run the lab was restored and the restore checked: no agent keys, no ru
 
 Needs Python 3.13 (`yara-python` 4.5.4 has no 3.14 wheels). Network access is optional with `--offline`; Wazuh 4.14 is needed only for the SIEM part.
 
-Linux (the lab ran on Kali with Python 3.13.12 and an editable dev install, `pip install -e ".[dev]"`; [`kali-install-and-suite.txt`](docs/evidence/e7/kali-install-and-suite.txt)):
+Linux (the lab ran on Kali with Python 3.13.12 and an editable dev install, `pip install -e ".[dev]"`; [`kali-install-and-suite.txt`](docs/evidence/lab/kali-install-and-suite.txt)):
 
 ```bash
 python3 -m venv .venv

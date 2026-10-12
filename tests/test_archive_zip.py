@@ -241,7 +241,7 @@ def test_overlapped_entries_recorded_no_warning_leaks(workdir, recwarn):
     members, anomalies = _run(path)
     assert [m.data for m in members] == [b"same", b"same"]
     overlap = [a for a in anomalies if a.detail == "overlapped entries"]
-    assert [a.kind for a in overlap] == ["overlapped_entry"]  # R24: was scanned
+    assert [a.kind for a in overlap] == ["overlapped_entry"]  # was scanned
     assert "duplicate_name" in _kinds(anomalies)
     assert len(recwarn) == 0
 

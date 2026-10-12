@@ -2,7 +2,7 @@
 
 ## ESL-005 typosquat (name only)
 
-Rule as ruled in R43 (variant "D+G"; see the ESL-005 row in design.md section 5).
+The rule is the one in the ESL-005 row of design.md section 5.
 Measured on 2026-10-06 with `scripts/measure_typosquat.py`, which calls the real
 `eslabon.typosquat.check` on the bundled lists:
 
@@ -21,7 +21,7 @@ typosquat names from OSV `MAL-` advisories (`positives`: distance-1 and affix sh
 | pypi | 14/1000 (1.4%) | 442/455 | 14/15 | 6/6 |
 | npm | 11/1000 (1.1%) | 90/121 | 9/11 | 1/8 |
 
-For comparison, the first implementation (task 13, threshold 1/2, scopes stripped on both
+For comparison, the first implementation (threshold 1/2, scopes stripped on both
 sides) gave 33/1000 (PyPI) and 92/1000 (npm) false positives on the same lists.
 
 The reviewer's independent harness (variant G) gives the same numbers.
@@ -52,7 +52,7 @@ These are listed here by name instead of being suppressed. There is no allowlist
   malicious packages). That causes most of the PyPI false positives above.
 
 The same counts were obtained again on 2026-10-06 when the false-positive measurement
-below was run (task 16). Measured with the scanner at commit 52d0d8e (src/ unchanged through 13899a9).
+below was run. Measured with the scanner at commit 52d0d8e (src/ unchanged through 13899a9).
 
 ## False positives on the legitimate corpus (ESL-001..006)
 
@@ -111,7 +111,7 @@ bugs, so they are listed instead of raised. For PyPI the sdist is chosen first, 
 design (`setup.py`, which ESL-001 judges, lives there), and sdists of compiled projects
 carry vendored sources.
 
-How a cap behaves (R50): a per-file, member-count or total cap **aborts the remaining
+How a cap behaves: a per-file, member-count or total cap **aborts the remaining
 members** of the archive. Findings from members read before the cap are kept and
 emitted; nothing after it is scanned (the esbuild package hit the cap on its first
 member, so even its `package.json` went unread: `files_scanned` 0). A `limits_exceeded`
@@ -146,11 +146,11 @@ legitimate packages outside the top 100.
   `os.system`/`subprocess`, an inline `long_description` quoting a requests GET call and
   a comment naming urllib's urlopen shapes did not occur in this corpus. They stay
   unmeasured, not disproved.
-- **ESL-002** (R38 cost of the node -e/-p token rule): only 3 of the npm top 1,000 have a
+- **ESL-002** (accepted cost of the node -e/-p token rule): only 3 of the npm top 1,000 have a
   `preinstall`/`install`/`postinstall` script (from `/<name>/latest` metadata): esbuild
   and pnpm (`node install.js`) and core-js (`node -e "try{require('./postinstall')}..."`,
   the local-require exemption). None fires. No `node x.js && mkdir -p`, `cp -p`,
-  `sed -e`, `grep -e`, `echo -e` or `npm -p` after a node word occurs, so R38's accepted
+  `sed -e`, `grep -e`, `echo -e` or `npm -p` after a node word occurs, so the accepted
   over-firing costs 0 packages here.
 - **ESL-003**: no ESL-003 string matched anywhere in the corpus, nor in the security-tool
   packages scanned additionally (bandit 1.9.4, semgrep 1.179.0, pip-audit 2.10.1,

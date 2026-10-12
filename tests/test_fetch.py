@@ -872,7 +872,7 @@ def test_real_npm_ms_2_1_3_hash_verified(tmp_path):
     assert hashlib.sha512(path.read_bytes()).hexdigest() == a.hash_value
 
 
-# ------------------------------------------------- fix round 1 (R49) ----
+# ------------------------------------------------ download hardening ----
 
 
 @pytest.mark.parametrize(
@@ -928,7 +928,7 @@ def test_dist_url_with_newline_rejected_before_download():
 
 
 def test_temp_dir_inside_working_tree_fails_closed(out, monkeypatch, track):
-    (out.parent.parent / ".git").mkdir()  # R61: the cwd is a git working tree
+    (out.parent.parent / ".git").mkdir()  # the cwd is a git working tree
     inside = out.parent.parent / "tmp-inside"
     inside.mkdir()
     monkeypatch.setattr(tempfile, "tempdir", str(inside))
@@ -974,7 +974,7 @@ def test_temp_leftover_reported(out, monkeypatch, track, capsys):
             d.rmdir()
 
 
-# ------------------------------------------------- fix round 2 (R49) ----
+# ------------------------------------------------ temp dir spellings ----
 
 BS = chr(92)
 WINDOWS = os.name == "nt"
@@ -1077,7 +1077,7 @@ def test_temp_dir_check_fails_closed_on_stat_error(tmp_path, monkeypatch):
 
 
 def test_git_probe_permission_error_fails_closed(tmp_path, monkeypatch):
-    # M4: an OSError other than "absent" must not read as "no .git here"
+    # an OSError other than "absent" must not read as "no .git here"
     elsewhere = Path(tempfile.mkdtemp(prefix="eslabon-test-"))
     try:
         if tmp_path.resolve() in elsewhere.resolve().parents:
@@ -1098,7 +1098,7 @@ def test_git_probe_permission_error_fails_closed(tmp_path, monkeypatch):
         elsewhere.rmdir()
 
 
-# ------------------------------------------------------- R61: git root ----
+# ------------------------------------------------------------ git root ----
 
 
 def test_cwd_ancestor_of_temp_and_not_a_git_repo_is_safe(tmp_path, monkeypatch):
@@ -1124,7 +1124,7 @@ def test_cwd_in_subdir_of_git_repo_protects_the_whole_repo(tmp_path, monkeypatch
     assert cli._temp_dir_unsafe(sub / "eslabon-x")
 
 
-# ------------------------------------------------------------ R62 #4 ------
+# ----------------------------------------------------- npm dist tags ------
 
 
 @pytest.mark.parametrize("tag", ["latest", "next", "beta", "v1.0.0"])
@@ -1144,7 +1144,7 @@ def test_npm_concrete_version_and_pypi_unchanged(out):
 
 
 def test_npm_version_with_unicode_digit_is_a_usage_error(out, capsys):
-    # M6: str.isdigit() accepts "¹"; the _TARGET regex is ASCII-only and
+    # str.isdigit() accepts "¹"; the _TARGET regex is ASCII-only and
     # already rejects it, so this is a guard against the isdigit check regressing
     with pytest.raises(cli.UsageError):
         cli._parse_argument("ms==¹.0.0", "npm")
@@ -1152,7 +1152,7 @@ def test_npm_version_with_unicode_digit_is_a_usage_error(out, capsys):
     assert not out.exists()
 
 
-# ------------------------------------------------------------ R62 #9 ------
+# ----------------------------------------------- shared names module ------
 
 
 def test_names_module_is_shared_and_fetch_does_not_import_typosquat():

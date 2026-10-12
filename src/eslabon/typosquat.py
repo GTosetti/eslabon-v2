@@ -4,7 +4,7 @@ Package-level and pure: ``check`` looks at a name only, never at archive
 content. It runs once per scan in the parent process (cli), after the worker
 returned, on the name(s) the package claims to be.
 
-Rule (docs/design.md section 5, controller ruling R43, variant "D+G"):
+Rule (docs/design.md section 5):
 
 - The FULL name (npm scope kept) is exempt if it is in the top 5,000.
 - Unscoped names: the normalised name (PEP 503 for PyPI, lowercase for npm) is

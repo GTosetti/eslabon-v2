@@ -149,7 +149,7 @@ class _MetadataPicker:
 
     def __init__(self, ecosystem: str, kind: str) -> None:
         self.ecosystem = ecosystem
-        # "wheel" / "sdist" / "npm": from the suffix, as ESL-001 reads it (R62)
+        # "wheel" / "sdist" / "npm": from the suffix, as ESL-001 reads it
         self.mode = kind
         self.candidates: list[tuple[str, str] | None] = []
         self.dirs: set[str] = set()

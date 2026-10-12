@@ -276,7 +276,7 @@ NUL = chr(0)
     ],
 )
 def test_rewritten_name_that_can_land_as_setup_py_fires(raw):
-    # R32: if ANY reading of the stored name (Windows separators, '..'
+    # if ANY reading of the stored name (Windows separators, '..'
     # resolved or dropped, NUL truncation, Win32 case/trailing-dot folding)
     # is the setup.py pip runs, ESL-001 applies.
     path = archive.normalize_path(raw, "pypi")[0]

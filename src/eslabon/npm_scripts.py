@@ -54,7 +54,7 @@ _LOCAL_REQUIRE = re.compile(
     r"""(?:\}\s*catch\s*(?:\(\s*\w*\s*\))?\s*\{\s*\}\s*)?\1"""
     r"""(?:\s*\|\|\s*(?:exit\s+0|true))?"""
 )
-# node -e / -p token rule (R38). NO shell emulation: separators, quoting and
+# node -e / -p token rule. NO shell emulation: separators, quoting and
 # escapes are not interpreted, because every emulation (separators, quotes,
 # CR, cmd.exe carets, bash $'...') was one more way to hide a node -e. A node
 # binary word (node, nodejs, optionally .exe/.cmd, optionally behind a / or \
@@ -156,7 +156,7 @@ def _scripts_span(text: str) -> tuple[int, int] | None:
     or None. Walks only strings and brackets, so braces inside strings or the
     nested ``"config"`` object do not count."""
     depth, pending, begin = 0, False, -1
-    last = None  # JSON.parse keeps the LAST duplicate top-level key (M2)
+    last = None  # JSON.parse keeps the LAST duplicate top-level key
     for tok in _JSON_TOKEN.finditer(text):
         t = tok.group()
         if t[0] == '"':
@@ -226,7 +226,7 @@ def scan_package_json(m: Member, ctx: ScanContext) -> list[Finding]:
 
     total, first = 0, None  # first = (line, script) of the earliest matching key
     text = _text(m.data)
-    span: tuple[int, int] | None | bool = False  # walked on the first match only (M1)
+    span: tuple[int, int] | None | bool = False  # walked on the first match only
     for key in LIFECYCLE:
         script = scripts.get(key)
         if not isinstance(script, str):

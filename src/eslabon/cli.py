@@ -121,7 +121,7 @@ def _parse_argument(text: str, ecosystem: str | None) -> tuple[str, str, str]:
         raise UsageError("name and version need a letter or digit")
     if ecosystem == "npm" and not (version[0].isascii() and version[0].isdigit()):
         # a dist-tag (latest, next) is not a version: OSV and the metadata
-        # check would be asked about the tag itself (R62 #4)
+        # check would be asked about the tag itself
         raise UsageError(
             f"npm name==version needs a concrete version, not a dist-tag: "
             f"{clean_text(version, 64)}"
@@ -196,7 +196,7 @@ def _git_root(start: Path) -> Path | None:
     """Nearest ancestor of ``start`` (itself included) with a ``.git`` entry.
 
     Only "absent" is a no answer; any other OSError propagates so that the
-    caller fails closed (M4: os.path.lexists would swallow it).
+    caller fails closed (os.path.lexists would swallow it).
     """
     for directory in (start, *start.parents):
         try:
@@ -210,7 +210,7 @@ def _git_root(start: Path) -> Path | None:
 def _protected_roots() -> list[Path]:
     """The git working tree containing the cwd and the Eslabon source tree.
 
-    Outside any git repo the cwd itself is not protected (R61): a cwd such as
+    Outside any git repo the cwd itself is not protected: a cwd such as
     the home directory or a drive root is an ancestor of every temp dir.
     """
     package = Path(__file__).resolve().parent
@@ -297,7 +297,7 @@ def _scan(args: argparse.Namespace) -> int:
         argument = (name, version)
         result, sha = _scan_registry(name, version, ecosystem, limits)
         # the requested name and version are the identity; ESL-005/006 still
-        # run on them when the fetch or the worker failed (R42/R46)
+        # run on them when the fetch or the worker failed
         pkg = PackageRef(name, version, ecosystem, sha)
     # Identity names first, on their own: a broken top list (ESL-005) must not
     # stop ESL-006, and vice versa. None means "could not be computed".
@@ -308,7 +308,7 @@ def _scan(args: argparse.Namespace) -> int:
         idents = None
         _downgrade(result, f"identity error: {type(exc).__name__}")
     if idents == []:
-        # R47: ESL-005/006 cannot run without a name -- the scan is incomplete,
+        # ESL-005/006 cannot run without a name -- the scan is incomplete,
         # with or without --offline
         result.anomalies.append(Anomaly("no_identity", "", _NO_IDENTITY))
         _downgrade(result, _NO_IDENTITY, to="incomplete")
@@ -361,7 +361,7 @@ def _argument_identity(
 ) -> list[tuple[str, str | None]]:
     """name==version targets: the requested name/version first, then the
     metadata's if it names another package (identity_mismatch) or the same
-    package with another version (R47: OSV is asked about both)."""
+    package with another version (OSV is asked about both)."""
     name, version = argument
     result.identity_source = "argument"
     idents: list[tuple[str, str | None]] = [(name, version)]
@@ -391,7 +391,7 @@ def _identity_names(
     metadata has none), the file-name version for the file-name name; None
     when no version is parseable for that name. If metadata and file name name
     the same package with different versions, the name is returned once per
-    version (R47), so OSV is asked about both.
+    version, so OSV is asked about both.
 
     For a ``name==version`` target, see _argument_identity.
     """

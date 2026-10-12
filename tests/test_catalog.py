@@ -24,7 +24,7 @@ def test_six_rules_with_spec_values(rid, name, sev, level, techs):
 
 
 def test_wazuh_mitre_defaults_to_techniques_except_esl003():
-    # R54: T1027.013 is absent from Wazuh's bundled MITRE db (logtest warning),
+    # T1027.013 is absent from Wazuh's bundled MITRE db (logtest warning),
     # so ESL-003 overrides it with the parent; events keep the v19.2 IDs.
     c = load_catalog()
     assert c["ESL-003"].wazuh_mitre == ["T1027", "T1140"]

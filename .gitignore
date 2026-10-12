@@ -15,6 +15,7 @@ id_ed25519*
 
 # --- Local-only notes (Spanish working notes, not part of the public repo)
 PROMPT-INICIAL.md
+docs/plan.md
 
 # --- Claude Code: personal overrides stay local ---------------------------
 .claude/settings.local.json

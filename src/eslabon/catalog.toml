@@ -76,7 +76,7 @@ severity = 9
 wazuh_level = 12
 techniques = ["T1027.013", "T1140"]
 # Wazuh 4.14's MITRE db lacks T1027.013 (logtest: "Mitre Technique ID
-# 'T1027.013' not found in database"), so rule 100303 uses the parent (E7, R54).
+# 'T1027.013' not found in database"), so rule 100303 uses the parent (seen in the lab run).
 wazuh_mitre = ["T1027", "T1140"]
 action = "Review or reject packages that decode and execute embedded payloads; sandbox first-run of unreviewed dependencies."
 residual_gap = "Misses multi-stage decoding split across lines, so decoder and evaluator are not adjacent."

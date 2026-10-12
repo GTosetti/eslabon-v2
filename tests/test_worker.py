@@ -19,7 +19,7 @@ def _ok_result(name: str) -> ScanResult:
         status="ok",
         findings=[
             Finding(
-                rule_id="R1",
+                rule_id="rule-1",
                 file=name,
                 member_index=0,
                 line=7,
