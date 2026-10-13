@@ -28,7 +28,8 @@ and what the SIEM **detects**.
    JSON, and alerts appear in `wazuh-alerts-*`. The three layers are counted separately.
 5. An English README that a stranger understands in two minutes, including
    *"What this does not detect"*.
-6. One writeup in `../02-writeups/` using the usual template.
+6. One writeup using the usual template. It is written and kept in the author's portfolio, outside this
+   repository, and is not published yet.
 
 Anything not needed for this list goes to `docs/roadmap.md` and is not built in v0.1.
 
@@ -36,11 +37,11 @@ Anything not needed for this list goes to `docs/roadmap.md` and is not built in 
 
 | Tool | What it does | Gap Eslabon targets |
 |---|---|---|
-| DataDog GuardDog (Apache-2.0) | Code and metadata heuristics on 7 ecosystems (Rust added in 3.2.0). 3.0.0 (2026-06-23) moved from Semgrep to YARA and added a 0–10 risk score. Extraction and scanning run in a sandbox (nono) that protects the host; no package code is executed. Version 3 also flags URL dependencies and a version that adds install scripts, which Eslabon does not check. Like Eslabon, it scans one archive per PyPI version (checked 2026-10-12) | Output is JSON or SARIF (SARIF only for `verify`). ATT&CK tactics per finding, no technique IDs; T1195 is added by Datadog Cloud SIEM rules, its only official SIEM integration |
+| DataDog GuardDog (Apache-2.0) | Code and metadata heuristics on 7 ecosystems (Rust added in 3.2.0). 3.0.0 (2026-06-23) moved from Semgrep to YARA and added a 0–10 risk score. Extraction and scanning run in a sandbox (nono) that protects the host; no package code is executed. Version 3 also flags URL dependencies and a version that adds install scripts, which Eslabon does not check. Like Eslabon, it scans one archive per PyPI version (checked 2026-10-12) | Output is JSON or SARIF (SARIF only for `verify`). ATT&CK tactics on threat findings, no technique IDs; T1195 is added by Datadog Cloud SIEM rules, its only official SIEM integration |
 | OSV-Scanner (Google) | Matches lockfiles against known advisories, including OSV `MAL-*` records, transitive dependencies included | Sees only what has already been reported |
 | Packj (AGPL-3.0) | Static and metadata analysis by default; an optional dynamic mode (strace) (checked 2026-10-12) | Its dynamic mode executes the package it analyses |
 | malcontent (Chainguard, Apache-2.0) | YARA (14,500+ rules) and a diff between two versions of a package (checked 2026-10-12) | No ATT&CK or SIEM output |
-| Socket (SaaS) | Commercial, 70+ risk types | Closed source; SIEM integration only on paid tiers |
+| Socket (SaaS) | Commercial, 70+ risk types | Closed source; no SIEM integration on the Free plan |
 | deps.dev (Google) | Metadata API | Enrichment, not detection |
 
 Install-time firewalls (Socket Firewall Free, Aikido Safe Chain, Datadog Supply-Chain
@@ -434,7 +435,7 @@ Operational rules:
 | False positives | Corpus, `measure_fp.py`, ESL-005 name-only check | Table of fully scanned / incomplete / FP measured; every false positive either fixed in its rule or published; ESL-005 rate on ranks 5,001–6,000 measured. Target 0 |
 | Offline integration | Wazuh XML, Sigma and its translation, logtest samples, agent snippet | Consistency tests green |
 | Lab end to end | Kali snapshot, trimmed agent, Eslabon on Kali, logtest on the manager, three-layer count, 70 KB experiment | N = N = N (or explained), with the queries and their output saved as evidence; Kali restored |
-| Publish | README with *"What this does not detect"*, `simplify`, `code-review`, `docs/roadmap.md`, writeup | All six items of §1 ticked, each linked to its proof |
+| Publish | README with *"What this does not detect"*, `simplify`, `code-review`, `docs/roadmap.md`, writeup | Items 1–5 of §1 met, with their proof in the README, `docs/`, `tests/` and the commit history; item 6 (the writeup) written but kept outside this repository |
 
 Every stage before *Lab end to end* needs no lab. That stage is the lab session and gets its writeup.
 
